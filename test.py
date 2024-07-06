@@ -11,8 +11,8 @@ from rag.file_conversion_router.utils.hardware_detection import detect_gpu_setup
 from rag.file_conversion_router.classes.page import Page
 from rag.file_conversion_router.classes.chunk import Chunk
 
-from rag.scraper.Scrape_pdf.pdf_helper import generate_mmd_file_path
-from rag.scraper.Scrape_pdf.Scrape_pdf import process_pdf, pdf_to_md
+from rag.scraper.Scraper_pdfs.pdf_helper import generate_mmd_file_path
+from rag.scraper.Scraper_pdfs.Scrape_pdf import process_pdf, pdf_to_md
 
 class PdfConverter(BaseConverter):
     def __init__(self, model_tag: str = "0.1.0-small", batch_size: int = 4):
