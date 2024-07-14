@@ -90,5 +90,5 @@ def missing_page_fill(pdf_file_path, folder_name, md_file_path):
 
 def generate_mmd_file_path(folder_path):
     folder_name = os.path.basename(folder_path)
-    mmd_file_path = os.path.join(folder_path, f"{folder_name}_remove_image.mmd")
+    mmd_file_path = os.path.join(folder_path, f"{folder_name}.mmd")
     return mmd_file_path

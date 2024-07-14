@@ -7,4 +7,4 @@ def pdf_to_md(pdf_file_path, folder_name):
 
 
 if __name__ == '__main__':
-    pdf_to_md("proj0.pdf", "Discussion")
+    pdf_to_md("rag\scraper\Scrape_pdf\example.pdf", "rag\scraper\Scrape_pdf")

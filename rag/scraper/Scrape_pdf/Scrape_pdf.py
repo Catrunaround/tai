@@ -73,7 +73,7 @@ def generate_mmd_file_path(folder_path):
     return mmd_file_path
 
 
-input_pdf = "rag\scraper\Scrape_pdf\example_pdf.pdf"
+input_pdf = "rag\scraper\Scrape_pdf\example.pdf"
 
 
 

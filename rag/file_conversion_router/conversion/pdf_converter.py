@@ -9,7 +9,7 @@ from rag.file_conversion_router.classes.chunk import Chunk
 import yaml
 
 from rag.scraper.Scrape_pdf.pdf_helper import generate_mmd_file_path
-from rag.scraper.Scrape_pdf.Scrape_pdf import process_pdf, pdf_to_md
+from rag.scraper.Scrape_pdf.Scrape_pdf import process_pdf, missing_page_fill
 
 class PdfConverter(BaseConverter):
     def __init__(self, model_tag: str = "0.1.0-small", batch_size: int = 4):
@@ -37,35 +37,44 @@ class PdfConverter(BaseConverter):
     # Override
     def _to_markdown(self, input_path: Path, output_path: Path) -> Path:
         # """Perform PDF to Markdown conversion using Nougat with the detected hardware configuration."""
-        # command = [
-        #     "nougat",
-        #     str(input_path),
-        #     # nougat requires the argument output path to be a directory, not file, so we need to handle it here
-        #     "-o",
-        #     str(output_path.parent),
-        #     "--no-skipping",
-        #     "--model",
-        #     self.model_tag,
-        #     "--batchsize",
-        #     str(self.batch_size),
-        # ]
-        # try:
-        #     result = subprocess.run(command, check=False, capture_output=True, text=True)
-        #     self._logger.info(f"Output: {result.stdout}")
-        #     self._logger.info(f"Errors: {result.stderr}")
-        #     if result.returncode != 0:
-        #         self._logger.error(f"Command exited with a non-zero status: {result.returncode}")
+        input_path_str = str(input_path)
+        output_path_str = str(output_path)
+        output_folder_str = str(output_path.parent)
+        new_input_pdf = process_pdf(input_pdf = input_path_str, output_folder = output_path_str)
+        command = [
+            "nougat",
+            new_input_pdf,
+            # nougat requires the argument output path to be a directory, not file, so we need to handle it here
+            "-o",
+            output_folder_str,
+            "--no-skipping",
+            "--model",
+            self.model_tag,
+            "--batchsize",
+            str(self.batch_size),
+        ]
+        try:
+            result = subprocess.run(command, check=False, capture_output=True, text=True)
+            self._logger.info(f"Output: {result.stdout}")
+            self._logger.info(f"Errors: {result.stderr}")
+            if result.returncode != 0:
+                self._logger.error(f"Command exited with a non-zero status: {result.returncode}")
+
+            md_file_path = generate_mmd_file_path(output_path_str)
         #     # Now change the file name of generated mmd file to align with the expected md file path from base converter
-        output_mmd_path = output_path.with_suffix(".mmd")
+            output_mmd_path = Path(md_file_path)
+            # output_mmd_path = output_path.with_suffix(".mmd")
+            missing_page_fill(new_input_pdf, output_folder_str, md_file_path)
+
         # Rename it to `md` file
-        target = output_path.with_suffix(".md")
-        output_mmd_path.rename(target)
-        print(output_mmd_path)
-        return target
+            target = output_mmd_path.with_suffix(".md")
+            output_mmd_path.rename(target)
+            print(output_mmd_path)
+            return target
         #
-        # except Exception as e:
-        #     self._logger.error(f"An error occurred {str(e)})")
-        #     raise
+        except Exception as e:
+            self._logger.error(f"An error occurred {str(e)})")
+            raise
 
     def _to_page(self, input_path: Path, output_path: Path) -> Page:
         """Perform Markdown to Page conversion."""
@@ -84,4 +93,4 @@ class PdfConverter(BaseConverter):
         url = metadata_content.get("URL", None)
         return Page(content={'text': text}, filetype=filetype, page_url=url)
     
-   
+    
