@@ -4,17 +4,17 @@
 import binascii
 import difflib
 import logging
+import hashlib
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import List, Union
-from typing import Set
+from typing import List, Union, Set
 
 from colorama import Fore, Style, init
 
 # Initialize colorama
 init(autoreset=True)
 # Below code uses multiple times of `Style.RESET_ALL` due to some unsolved issue
-# but at lease the color now works as expected
+# but at least the color now works as expected
 logging.basicConfig(
     level=logging.DEBUG,
     format=f"{Fore.WHITE}%(asctime)s - %(levelname)s - %(message)s{Style.RESET_ALL}",
@@ -76,6 +76,15 @@ def format_and_print_diff(differences: List[str], fromfile: str, tofile: str) ->
             logging.info(formatted_line + Style.RESET_ALL)
 
 
+def calculate_file_hash(file_path: Path) -> str:
+    """Calculates the SHA-256 hash of a file."""
+    hash_sha256 = hashlib.sha256()
+    with file_path.open("rb") as file:
+        for chunk in iter(lambda: file.read(4096), b""):
+            hash_sha256.update(chunk)
+    return hash_sha256.hexdigest()
+
+
 def compare_files(expected_path: Path, output_path: Path, similarity_threshold: int = SIMILARITY_THRESHOLD) -> bool:
     """
     Compares two files based on their contents with a specified similarity threshold.
@@ -90,35 +99,45 @@ def compare_files(expected_path: Path, output_path: Path, similarity_threshold: 
         bool: True if files are considered similar above the threshold, False otherwise.
     """
     binary = is_binary_file(expected_path) or is_binary_file(output_path)
-    expected_contents = read_file_contents(expected_path, binary)
-    output_contents = read_file_contents(output_path, binary)
-
     fromfile = str(expected_path)
     tofile = str(output_path)
 
-    if binary:
-        hex_expected = hex_dump(expected_contents)
-        hex_output = hex_dump(output_contents)
-        matcher = SequenceMatcher(None, hex_expected, hex_output)
-    else:
-        matcher = SequenceMatcher(None, expected_contents, output_contents)
-
-    similarity_percentage = matcher.ratio() * 100
-
-    if similarity_percentage >= similarity_threshold:
-        logging.info(Fore.GREEN + f"Files {fromfile} and {tofile} are similar "
-                                  f"above the threshold ({similarity_percentage:.2f}% similar)." + Style.RESET_ALL)
-        return True
-    else:
-        logging.info(Fore.RED + f"Files {fromfile} and {tofile} are not similar "
-                                f"({similarity_percentage:.2f}% similar)." + Style.RESET_ALL)
-        if binary:
-            diffs = get_diffs(hex_expected, hex_output, fromfile, tofile)
+    if expected_path.suffix.lower() == ".pdf" and output_path.suffix.lower() == ".pdf":
+        expected_hash = calculate_file_hash(expected_path)
+        output_hash = calculate_file_hash(output_path)
+        if expected_hash == output_hash:
+            logging.info(Fore.GREEN + f"PDF files {fromfile} and {tofile} are identical based on hash comparison." + Style.RESET_ALL)
+            return True
         else:
-            diffs = get_diffs(expected_contents, output_contents, fromfile, tofile)
+            logging.info(Fore.RED + f"PDF files {fromfile} and {tofile} are different based on hash comparison." + Style.RESET_ALL)
+            return False
+    else:
+        expected_contents = read_file_contents(expected_path, binary)
+        output_contents = read_file_contents(output_path, binary)
 
-        format_and_print_diff(diffs, fromfile, tofile)
-        return False
+        if binary:
+            hex_expected = hex_dump(expected_contents)
+            hex_output = hex_dump(output_contents)
+            matcher = SequenceMatcher(None, hex_expected, hex_output)
+        else:
+            matcher = SequenceMatcher(None, expected_contents, output_contents)
+
+        similarity_percentage = matcher.ratio() * 100
+
+        if similarity_percentage >= similarity_threshold:
+            logging.info(Fore.GREEN + f"Files {fromfile} and {tofile} are similar "
+                                      f"above the threshold ({similarity_percentage:.2f}% similar)." + Style.RESET_ALL)
+            return True
+        else:
+            logging.info(Fore.RED + f"Files {fromfile} and {tofile} are not similar "
+                                    f"({similarity_percentage:.2f}% similar)." + Style.RESET_ALL)
+            if binary:
+                diffs = get_diffs(hex_expected, hex_output, fromfile, tofile)
+            else:
+                diffs = get_diffs(expected_contents, output_contents, fromfile, tofile)
+
+            format_and_print_diff(diffs, fromfile, tofile)
+            return False
 
 
 def compare_folders(expected_dir: Path, output_dir: Path, similarity_threshold: int = SIMILARITY_THRESHOLD) -> bool:
@@ -135,12 +154,11 @@ def compare_folders(expected_dir: Path, output_dir: Path, similarity_threshold: 
         bool: True if the folders match, False otherwise.
     """
 
-    #Because .pdf file are not necessary to be compared so we ignore they for now
-    def get_non_pdf_files(dir: Path) -> Set[Path]:
-        return {file.relative_to(dir) for file in dir.rglob("*") if file.is_file() and file.suffix.lower() != ".pdf"}
+    def get_all_files(dir: Path) -> Set[Path]:
+        return {file.relative_to(dir) for file in dir.rglob("*") if file.is_file()}
 
-    expected_files = get_non_pdf_files(expected_dir)
-    output_files = get_non_pdf_files(output_dir)
+    expected_files = get_all_files(expected_dir)
+    output_files = get_all_files(output_dir)
 
     all_matched = True
     # Compare common files
