@@ -954,7 +954,11 @@ xref
 0000214050 00000 n 
 
 trailer
+<<<<<<< HEAD:tests/test_rag/data/integrated_tests/expected_output_folder1_plain_folder_3_pdfs/hw05_3pages/hw05_3pages_copy/hw05_3pages_copy.pdf
 <</Size 71/Info 70 0 R/Root 27 0 R/ID[<7571BFF1F593A8E6AD0B95F1BDABB039><9E912D4992055B703E44C416ADCF2337>]>>
+=======
+<</Size 71/Info 70 0 R/Root 27 0 R/ID[<7571BFF1F593A8E6AD0B95F1BDABB039><4A03ED3F8620A34FFA87155CB1B9FC65>]>>
+>>>>>>> main:tests/test_rag/data/integrated_tests/expected_output_folder1_plain_folder_3_pdfs/hw05_3pages_copy/hw05_3pages_copy.pdf
 startxref
 214208
 %%EOF
