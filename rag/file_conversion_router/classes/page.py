@@ -24,27 +24,32 @@ class Page:
         self.segments = []
         self.tree_segments = []
         self.chunks = []
-        self.page_numbers = self.load_metadata_page_numbers(
-            metadata_path) if metadata_path and metadata_path.exists() else None
+        if self.filetype == 'pdf' and metadata_path and metadata_path.exists():
+            self.page_numbers = self.load_metadata_page_numbers(metadata_path)
+        else:
+            self.page_numbers = None
 
     def load_metadata_page_numbers(self, metadata_path: Path):
-        """
-        Load page numbers and their start lines from a metadata YAML file.
+            """
+            Load page numbers and their start lines from a metadata YAML file.
 
-        Args:
-            metadata_path (Path): Path to the metadata YAML file.
+            Args:
+                metadata_path (Path): Path to the metadata YAML file.
 
-        Returns:
-            list: A list of dictionaries with 'page_num' and 'start_line' keys.
-        """
-        try:
-            with open(metadata_path, 'r', encoding='utf-8') as f:
-                metadata = yaml.safe_load(f)
-            return [{'page_num': page_info['page_num'], 'start_line': page_info['start_line']} for page_info in
-                    metadata.get('pages', [])]
-        except Exception as e:
-            print(f"Error reading metadata: {e}")
-            return []
+            Returns:
+                list: A list of dictionaries with 'page_num' and 'start_line' keys.
+            """
+            try:
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    metadata = yaml.safe_load(f)
+                return [{'page_num': page_info['page_num'], 'start_line': page_info['start_line']} for page_info in
+                        metadata.get('pages', [])]
+            except Exception as e:
+                print(f"Error reading metadata: {e}")
+                return []
+
+
+
 
     def recursive_separate(self, response: str, token_limit: int = 400) -> list:
         """
@@ -99,6 +104,15 @@ class Page:
         return msg_list
 
     def extract_headers_and_content(self, md_content):
+        """
+        Extract headers and content from markdown content. This function is only used for non-PDF files.
+        
+        Args:
+            md_content (str): The markdown content of the page.
+
+        Returns:
+            list: A list of headers and content sections.
+        """
         def count_consecutive_hashes(s):
             count = 0
             for char in s:
@@ -114,6 +128,7 @@ class Page:
         in_code_block = False
         md_lines = md_content.split('\n')
 
+        # Handle page numbers for PDF files if available
         current_page_num = self.page_numbers[0]['page_num'] if self.page_numbers else None
         page_num_index = 1  # Start from the second page since we've assigned the first
         total_pages = len(self.page_numbers) if self.page_numbers else 0
@@ -121,8 +136,8 @@ class Page:
         for line_num, line in enumerate(md_lines, start=1):
             stripped_line = line.strip()
 
-            # Update current_page_num based on start_line
-            if self.page_numbers:
+            # Update current_page_num based on start_line (only for PDFs)
+            if self.filetype == 'pdf' and self.page_numbers:
                 while page_num_index < total_pages and line_num >= self.page_numbers[page_num_index]['start_line']:
                     current_page_num = self.page_numbers[page_num_index]['page_num']
                     page_num_index += 1
@@ -270,6 +285,7 @@ class Page:
         for segment in self.tree_segments:
             content_chunks = self.recursive_separate(segment['Segment_print'], 400)
             page_num = segment.get('page_num', None)
+            print(f"Processing segment with page_num: {page_num}")
             for count, content_chunk in enumerate(content_chunks):
                 headers = segment['Page_path']
 
