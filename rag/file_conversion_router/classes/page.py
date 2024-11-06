@@ -24,7 +24,7 @@ class Page:
         self.segments = []
         self.tree_segments = []
         self.chunks = []
-        if self.filetype == 'pdf' and metadata_path and metadata_path.exists():
+        if self.filetype == 'pdf' and metadata_path.exists():
             self.page_numbers = self.load_metadata_page_numbers(metadata_path)
         else:
             self.page_numbers = None
