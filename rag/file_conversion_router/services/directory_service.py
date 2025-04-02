@@ -13,6 +13,8 @@ from rag.file_conversion_router.conversion.rst_converter import RstConverter
 from rag.file_conversion_router.conversion.video_converter import VideoConverter
 from rag.file_conversion_router.conversion.ed_converter import EdConverter
 from rag.file_conversion_router.conversion.html_converter import HtmlConverter
+from rag.file_conversion_router.conversion.notebook_converter import NotebookConverter
+from rag.file_conversion_router.conversion.python_converter import PythonConverter
 from rag.file_conversion_router.services.task_manager import schedule_conversion
 from rag.file_conversion_router.utils.logger import content_logger, set_log_file_path
 from rag.file_conversion_router.utils.conversion_cache import ConversionCache
@@ -27,7 +29,9 @@ converter_mapping: ConverterMapping = {
     ".rst": RstConverter,
     ".mp4": VideoConverter,
     ".json": EdConverter,
-    ".html": HtmlConverter
+    ".html": HtmlConverter,
+    ".ipynb": NotebookConverter,
+    ".py": PythonConverter
     #     TODO: Add more file types and converters here
 }
 
