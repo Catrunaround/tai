@@ -13,6 +13,7 @@ class PythonConverter(BaseConverter):
         """Converts a Python file to a Markdown file by formatting it as a code block."""
         
         output_path = output_path.with_suffix(".md")
+        title = input_path.stem
         
         with open(input_path, "r") as input_file, open(output_path, "w") as output_file:
             content = input_file.read()

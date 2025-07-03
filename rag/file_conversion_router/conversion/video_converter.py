@@ -5,13 +5,9 @@ from scenedetect.detectors import AdaptiveDetector
 from scenedetect.scene_manager import save_images, write_scene_list
 import os
 from pathlib import Path
-from rag.file_conversion_router.conversion.base_converter import BaseConverter
 from transformers import pipeline, set_seed, AutoTokenizer, AutoModelForCausalLM
 import torch
 import json
-import re
-from file_conversion_router.classes.page import Page
-from file_conversion_router.classes.vidpage import VidPage
 from file_conversion_router.conversion.base_converter import BaseConverter
 
 

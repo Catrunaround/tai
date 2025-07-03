@@ -9,14 +9,14 @@ from threading import Lock
 from typing import Dict, List, Union
 
 import yaml
-from rag.file_conversion_router.classes.chunk import Chunk
-from rag.file_conversion_router.classes.page import Page
-from rag.file_conversion_router.classes.vidpage import VidPage
-from rag.file_conversion_router.embedding_optimization.src.pipeline.optimizer import EmbeddingOptimizer
-from rag.file_conversion_router.utils.logger import conversion_logger, logger, content_logger
-from rag.file_conversion_router.utils.utils import calculate_hash, ensure_path, check_url
-from rag.file_conversion_router.utils.conversion_cache import ConversionCache
-from rag.file_conversion_router.utils.title_handle import *
+from file_conversion_router.classes.chunk import Chunk
+from file_conversion_router.classes.page import Page
+from file_conversion_router.classes.vidpage import VidPage
+from file_conversion_router.embedding_optimization.src.pipeline.optimizer import EmbeddingOptimizer
+from file_conversion_router.utils.logger import conversion_logger, logger, content_logger
+from file_conversion_router.utils.utils import calculate_hash, ensure_path, check_url
+from file_conversion_router.utils.conversion_cache import ConversionCache
+from file_conversion_router.utils.title_handle import *
 class BaseConverter(ABC):
     """Base classes for all file type converters.
 
@@ -328,6 +328,7 @@ class BaseConverter(ABC):
         return len(header_levels)
 
     def apply_markdown_structure(self, input_md_path: Path | None, file_type: str, metadata_path:Path) -> str:
+        # TODO rebuild this function
         file_name = input_md_path.stem
         with open(input_md_path, "r", encoding= 'UTF-8') as input_file:
             content_text = input_file.read()
@@ -349,7 +350,9 @@ class BaseConverter(ABC):
             return content_text
 
 
-
+    @abstractmethod
+    def title_to_index(self,md_path: Path):
+        pass
 
     @abstractmethod
     def _to_markdown(self, input_path: Path, output_path: Path) -> None:
