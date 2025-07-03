@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import yaml
-
 from file_conversion_router.classes.page import Page
 from file_conversion_router.conversion.base_converter import BaseConverter
 
