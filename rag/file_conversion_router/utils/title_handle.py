@@ -7,11 +7,7 @@ from pathlib import Path
 import yaml
 import json
 import re
-
-from tests.test_rag.test_file_conversion_router.test_embedding_optimization.conftest import (
-    logger,
-)
-
+from loguru import logger
 
 def get_structured_content_without_title(
     md_content: str, file_name: str, course_name: str

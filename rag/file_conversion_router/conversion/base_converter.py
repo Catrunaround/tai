@@ -436,6 +436,10 @@ class BaseConverter(ABC):
             return content_text
 
     @abstractmethod
+    def title_to_index(self, md_path: Path) -> int:
+        pass
+
+    @abstractmethod
     def _to_markdown(self, input_path: Path, output_path: Path) -> None:
         """Convert the input file to Expected Markdown format. To be implemented by subclasses."""
         raise NotImplementedError("This method should be overridden by subclasses.")

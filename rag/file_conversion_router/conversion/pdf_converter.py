@@ -1,6 +1,7 @@
 import os
 import re
 from pathlib import Path
+import json
 
 from file_conversion_router.conversion.base_converter import BaseConverter
 
@@ -49,7 +50,6 @@ class PdfConverter(BaseConverter):
     def _to_markdown(
         self, input_path: Path, output_path: Path, conversion_method: str = "MinerU"
     ) -> Path:
-        # """Perform PDF to Markdown conversion using Nougat with the detected hardware configuration."""
         self.validate_tool(conversion_method)
         temp_dir_path = output_path.parent
 
@@ -70,44 +70,39 @@ class PdfConverter(BaseConverter):
             self.clean_markdown_content(target)
         return target
 
-    # def _to_markdown_using_native_nougat_cli(self, input_pdf_path: Path, output_path: Path) -> None:
-    #     """
-    #     Perform PDF to Markdown conversion using Native Nougat CLI.
-    #
-    #     The native nougat cli is in the predict.py from meta nougat repo.
-    #     Parameters except input and output path are hard coded for now.
-    #     """
-    #     default_nougat_config = TAINougatConfig()
-    #     command = [
-    #         "nougat",
-    #         str(input_pdf_path),
-    #         # nougat requires the argument output path to be a directory, not file, so we need to handle it here
-    #         "-o",
-    #         str(output_path.parent),
-    #         "--no-skipping" if not default_nougat_config.skipping else "",
-    #         "--recompute" if default_nougat_config.recompute else "",
-    #         "--model",
-    #         default_nougat_config.model_tag,
-    #     ]
-    #     command = [str(arg) for arg in command]
-    #     try:
-    #         result = subprocess.run(command, check=False, capture_output=True, text=True)
-    #         self._logger.info(f"Output: {result.stdout}")
-    #         self._logger.info(f"Errors: {result.stderr}")
-    #         if result.returncode != 0:
-    #             self._logger.error(f"Command exited with a non-zero status: {result.returncode}")
-    #     except Exception as e:
-    #         self._logger.error(f"An error occurred: {str(e)}")
-    #         raise
-    #
-    # @staticmethod
-    # def _to_markdown_using_tai_nougat(input_pdf_path: Path, output_path: Path) -> None:
-    #     """Perform PDF to Markdown conversion using TAI Nougat.
-    #
-    #     TAI nougat is our custom implementation of the Nougat API, with better performance and abstraction.
-    #     """
-    #     config = TAINougatConfig(
-    #         pdf_paths=[input_pdf_path],
-    #         output_dir=output_path.parent,
-    #     )
-    #     convert_pdf_to_mmd(config)
+    def title_to_index(self, md_path: Path) -> dict[str, int]:
+        """
+        Map every Markdown heading in ``md_path`` to its page index,
+        as recorded in the companion ``*_content_list.json`` file.
+
+        Returns
+        -------
+        dict
+            {title_text: page_idx}
+        """
+        json_path = md_path.with_name(f"{md_path.stem}_content_list.json")
+        with open(json_path, encoding="utf-8") as jf:
+            json_content = json.load(jf)
+        text_to_page_idx = {
+            item["text"].strip(): item["page_idx"] + 1 for item in json_content
+        }
+        heading_re = re.compile(r"^\s*#+\s*(.+?)\s*$")  # any level of '#'
+        title_to_idx: dict[str, int] = {}
+        with md_path.open(encoding="utf-8") as mf:
+            for lineno, line in enumerate(mf, 1):
+                m = heading_re.match(line)
+                if not m:
+                    continue
+                title = m.group(1).strip()
+                try:
+                    title_to_idx[title] = text_to_page_idx[title]
+                except KeyError:
+                    raise KeyError(
+                        f"Heading on line {lineno} not found in JSON: {title!r}"
+                    ) from None
+
+        if not title_to_idx:
+            raise ValueError("No markdown headings found in the file.")
+        return title_to_idx
+
+
