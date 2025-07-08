@@ -2,7 +2,7 @@ import os
 import re
 from pathlib import Path
 import json
-
+import yaml
 from file_conversion_router.conversion.base_converter import BaseConverter
 
 from file_conversion_router.services.tai_MinerU_service.api import (
@@ -13,7 +13,8 @@ from file_conversion_router.services.tai_MinerU_service.api import (
 class PdfConverter(BaseConverter):
     def __init__(self, course_name, course_id):
         super().__init__(course_name, course_id)
-        self.available_tools = ["nougat", "MinerU"]
+        self.available_tools = ["MinerU"]
+        self.index_helper = None
 
     def is_tool_supported(self, tool_name):
         """
@@ -58,9 +59,8 @@ class PdfConverter(BaseConverter):
             os.makedirs(temp_dir_path)
         if conversion_method == "MinerU":
             new_output_path = output_path.with_suffix("")
-            convert_pdf_to_md_by_MinerU(input_path, new_output_path)
-            base_name = input_path.stem  # e.g., "07-Function_Examples_1pp"
-            md_file_path = new_output_path.parent / f"{base_name}.md"
+            md_file_path = convert_pdf_to_md_by_MinerU(input_path, new_output_path)
+
             if md_file_path.exists():
                 print(f"Markdown file found: {md_file_path}")
             else:
@@ -68,41 +68,22 @@ class PdfConverter(BaseConverter):
             # Set the target to this markdown path
             target = md_file_path
             self.clean_markdown_content(target)
-        return target
+            json_file_path = md_file_path.with_name(f"{md_file_path.stem}_content_list.json")
+            with open(json_file_path, "r", encoding="utf-8") as f_json:
+                data = json.load(f_json)
+            self.generate_index_helper(data)
+            return target
 
-    def title_to_index(self, md_path: Path) -> dict[str, int]:
-        """
-        Map every Markdown heading in ``md_path`` to its page index,
-        as recorded in the companion ``*_content_list.json`` file.
-
-        Returns
-        -------
-        dict
-            {title_text: page_idx}
-        """
-        json_path = md_path.with_name(f"{md_path.stem}_content_list.json")
-        with open(json_path, encoding="utf-8") as jf:
-            json_content = json.load(jf)
-        text_to_page_idx = {
-            item["text"].strip(): item["page_idx"] + 1 for item in json_content
-        }
-        heading_re = re.compile(r"^\s*#+\s*(.+?)\s*$")  # any level of '#'
-        title_to_idx: dict[str, int] = {}
-        with md_path.open(encoding="utf-8") as mf:
-            for lineno, line in enumerate(mf, 1):
-                m = heading_re.match(line)
-                if not m:
+    def generate_index_helper(self, data):
+        self.index_helper  = []
+        for item in data:
+            if item.get('text_level') == 1:
+                title = item['text'].strip()
+                pattern = r'^\s*ROAR ACADEMY EXERCISES\s*$'
+                if re.match(pattern, title):
                     continue
-                title = m.group(1).strip()
-                try:
-                    title_to_idx[title] = text_to_page_idx[title]
-                except KeyError:
-                    raise KeyError(
-                        f"Heading on line {lineno} not found in JSON: {title!r}"
-                    ) from None
+                page_index = item['page_idx'] + 1  # Convert to 1-based indexing
+                self.index_helper.append({title: page_index})
 
-        if not title_to_idx:
-            raise ValueError("No markdown headings found in the file.")
-        return title_to_idx
 
 
