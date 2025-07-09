@@ -286,14 +286,9 @@ class Page:
         for segment in self.tree_segments:
             header_list = segment["Page_path"]
             print(f"header_list: {header_list}")
-            if len(header_list) > 1:
-                final_title = f"{header_list[-1]} < {' '.join(header_list[:-1])}"
-                print(f"final_title: {final_title}")
-            elif len(header_list) == 1:
-                final_title = header_list[0]
-                print(f"final_title: {final_title}")
-            else:
-                final_title = "(NO TITLE)"
+            final_title = '>'.join(header_list)
+            if not final_title:
+                final_title = "No Title"
             splitted_contents = self.recursive_separate(segment["Segment_print"], 400)
             page_num = segment.get("page_num", None)
 

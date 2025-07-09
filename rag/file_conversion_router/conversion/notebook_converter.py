@@ -21,70 +21,38 @@ class NotebookConverter(BaseConverter):
             return []
 
         titles = []
-        header_matches = re.findall(r'^(#{1,6})\s+(.+)$', content, re.MULTILINE)
+        header_matches = re.findall(r'^\s*(#+)\s+(.+)\s*$', content, re.MULTILINE)
         for level, title in header_matches:
-            clean_title = title.strip()
+            clean_title = title.strip().lstrip('*').strip().rstrip('*').strip()
             if clean_title:
                 titles.append(clean_title)
 
-        bold_matches = re.findall(r'\*\*([^*]+)\*\*', content)
-        for bold_text in bold_matches:
-            clean_bold = bold_text.strip()
-            # If bold text is short enough to be a title and not already found
-            if (len(clean_bold) <= 100 and
-                    '\n' not in clean_bold and
-                    clean_bold not in titles):
-                titles.append(clean_bold)
-        if not titles:
-            first_line = content.split('\n')[0].strip()
-            if (len(first_line) <= 80 and
-                    not first_line.startswith('```') and
-                    not first_line.startswith('    ') and
-                    not re.search(r'[{}()\[\]<>]', first_line)):
-                titles.append(first_line)
-        if not titles:
-            # Keep formatting but normalize whitespace
-            clean_content = re.sub(r'\n+', ' ', content).strip()
-
-            words = clean_content.split()
-            if words:
-                first_20_words = ' '.join(words[:20])
-                titles.append(first_20_words)
-
+        star_matches = re.findall(r'^\s*\*+(.+)\*+\s*$', content, re.MULTILINE)
+        for title in star_matches:
+            clean_title = title.strip(' #*')
+            if clean_title:
+                titles.append(clean_title)
         return titles
 
-    def generate_index_helper(self, notebook_content):
-        """
-        Create index helper from notebook content
-        Now supports multiple titles per cell
 
-        Args:
-            notebook_content: nbformat notebook object
-
-        Returns:
-            list: List of dictionaries with cell titles/names as keys and indices as values
-        """
+    def generate_index_helper(self, notebook_content, markdown_content):
         self.index_helper = []
-        code_counter = 1
         for i, cell in enumerate(notebook_content.cells):
-            if cell.cell_type == 'markdown':
-                titles = self.extract_all_markdown_titles(cell.source)
-                self.index_helper.append({title: i + 1 for title in titles})
-            elif cell.cell_type == 'code':
-                if cell.source.strip():
-                    self.index_helper.append({f"Code Cell {code_counter}": i + 1})
-                    code_counter += 1
+            titles = self.extract_all_markdown_titles(cell.source)
+            for title in titles:
+                self.index_helper.append({title: i + 1})
+
     # Override
     def _to_markdown(self, input_path: Path, output_path: Path) -> Path:
         output_path = output_path.with_suffix(".md")
 
         with open(input_path, "r") as input_file, open(output_path, "w") as output_file:
             content = nbformat.read(input_file, as_version=4)
-            self.generate_index_helper(content)
             markdown_converter = MarkdownExporter()
             (markdown_content, resources) = markdown_converter.from_notebook_node(
                 content
             )
+            self.generate_index_helper(content,markdown_content)
             output_file.write(self._post_process_markdown(markdown_content))
         return output_path
 

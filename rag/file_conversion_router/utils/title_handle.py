@@ -120,29 +120,18 @@ def get_strutured_content_for_ipynb(
                                                 'items': {'type': 'string'},
                                                 'description': 'The options for the sub problem, they should be key_concepts in the md_content'
                                             },
-                                            'answers': {
+                                            'answers_options': {
                                                 'type': 'array',
-                                                'items': {
-                                                    'type': 'object',
-                                                    'properties': {
-                                                        'options': {
-                                                            'type': 'array',
-                                                            'items': {
-                                                                'type': 'integer',
-                                                                'description': 'The index of the option in the options array, e.g. [0,1] for the first and second options'
-                                                            }
-                                                        },
-                                                        'explanation': {
-                                                            'type': 'string',
-                                                            'description': 'The explanation of why this option is the answer, it should be a key_concept in the md_content'
-                                                        }
-                                                    },
-                                                    'required': ['options', 'explanation'],
-                                                    'additionalProperties': False,
-                                                }
-                                            }
+                                                'items': {'type': 'integer'},
+                                                'description': 'The index of the option in the options array, e.g. [0,1] for the first and second options'
+                                            },
+                                            'explanation_of_answer': {
+                                                'type': 'string',
+                                                'description': 'The explanation of why this option is the answer, it should be a key_concept in the md_content'
+                                            },
                                         },
-                                        'required': ['description_of_problem', 'options', 'answers'],
+                                        'required': ['description_of_problem', 'options', 'answers_options',
+                                                     'explanation_of_answer'],
                                         'additionalProperties': False,
                                     },
                                     "sub_problem_2": {
@@ -150,36 +139,25 @@ def get_strutured_content_for_ipynb(
                                         'properties': {
                                             'description_of_problem': {
                                                 'type': 'string',
-                                                'description': 'The description of the sub problem, it should be a multiple choice question, different from first question. I want you to create a question that asks "How to apply the key concepts to solve this problem?" or "What approaches should be used when applying these concepts?" Focus on how students can practically use the key concepts to address the problem.'
+                                                'description': 'The description of the sub problem, it should be a multiple choice question, better contains more than 1 answer e.g. "What key concepts are related to this question?" The goal is to help students understand what concepts are involved in the main problem.'
                                             },
                                             'options': {
                                                 'type': 'array',
                                                 'items': {'type': 'string'},
                                                 'description': 'The options for the sub problem, they should be key_concepts in the md_content'
                                             },
-                                            'answers': {
+                                            'answers_options': {
                                                 'type': 'array',
-                                                'items': {
-                                                    'type': 'object',
-                                                    'properties': {
-                                                        'options': {
-                                                            'type': 'array',
-                                                            'items': {
-                                                                'type': 'integer',
-                                                                'description': 'The index of the option in the options array, e.g. [0,1] for the first and second options'
-                                                            }
-                                                        },
-                                                        'explanation': {
-                                                            'type': 'string',
-                                                            'description': 'The explanation of why this option is the answer, it should be a key_concept in the md_content'
-                                                        }
-                                                    },
-                                                    'required': ['options', 'explanation'],
-                                                    'additionalProperties': False,
-                                                }
-                                            }
+                                                'items': {'type': 'integer'},
+                                                'description': 'The index of the option in the options array, e.g. [0,1] for the first and second options'
+                                            },
+                                            'explanation_of_answer': {
+                                                'type': 'string',
+                                                'description': 'The explanation of why this option is the answer, it should be a key_concept in the md_content'
+                                            },
                                         },
-                                        'required': ['description_of_problem', 'options', 'answers'],
+                                        'required': ['description_of_problem', 'options', 'answers_options',
+                                                     'explanation_of_answer'],
                                         'additionalProperties': False,
                                     },
                                 },
@@ -515,11 +493,13 @@ def apply_structure_for_no_title(md_content: str, content_dict):
             content_dict['titles_with_levels'].append({
                 "title": section_title,
                 "level_of_title": 1,
+                "paragraph_index": p_index,
             })
         md_parts.append(f"## {p_title}\n\n")
         content_dict['titles_with_levels'].append({
             "title": p_title,
             "level_of_title": 2,
+            "paragraph_index": p_index,
         })
         content_index = p_index - 1
         if 0 <= content_index < len(original_paragraphs):
@@ -559,8 +539,8 @@ def apply_structure_for_one_title(md_content: str, content_dict):
         match = title_pattern.match(line.strip())
         if match:
             raw_title = match.group("title").strip()
-            assert (raw_title == mapping_list[i]["title"].strip(),
-                    f"Title mismatch: {raw_title} != {mapping_list[i]['title'].strip()}")
+            assert raw_title == mapping_list[i][
+                "title"].strip(), f"Title mismatch: {raw_title} != {mapping_list[i]['title']}"
             new_level = mapping_list[i]["level_of_title"]
             new_lines.append(f"{'#' * new_level} {raw_title}")
             i += 1

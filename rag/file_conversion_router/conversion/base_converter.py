@@ -254,14 +254,14 @@ class BaseConverter(ABC):
         pkl_output_path = output_folder / f"{filename}.pkl"
         logger.info(f"📄 Expected Markdown Path: {self._md_path}")
         logger.info(f"🛠️ Expected Pickle Path: {pkl_output_path}")
-        try:
-            page = self._convert_to_page(input_path, pkl_output_path)
-            logger.info("✅ Page conversion successful.")
-            # TODO: when chunks are created, instead of save them to pkl, create data base in base_converter.py and save them to database. Consider it is in thead to avoid blocking other addding tasks.
-            page.to_chunk()
-            logger.info("✅ Successfully converted page content to chunks.")
-        except Exception as e:
-            logger.error(f"❌ ERROR during processing: {e}", exc_info=True)
+        # try:
+        page = self._convert_to_page(input_path, pkl_output_path)
+        logger.info("✅ Page conversion successful.")
+        # TODO: when chunks are created, instead of save them to pkl, create data base in base_converter.py and save them to database. Consider it is in thead to avoid blocking other addding tasks.
+        page.to_chunk()
+        logger.info("✅ Successfully converted page content to chunks.")
+        # except Exception as e:
+        #     logger.error(f"❌ ERROR during processing: {e}", exc_info=True)
 
         # Add embedding optimization if enabled
         if self.optimizer:
@@ -420,52 +420,36 @@ class BaseConverter(ABC):
         metadata_content["file_name"] = self._md_path.stem
         metadata_content['file_ path'] = str(self._md_path)
         if self.file_type == "ipynb":
-            metadata_content["problems"] = self.process_problems(content_dict, self.index_helper)
+            metadata_content["problems"] = self.process_problems(content_dict)
         return metadata_content
 
-    def process_problems(self, content_dict, index_helper):
+    def process_problems(self, content_dict):
         # Return just the list of problems, not a dictionary
         problems_list = []
+        for problem in content_dict['problems']:
+            processed_problem = {}
+            for title in self.index_helper:
+                if problem['ID'] in title:
+                    processed_problem['problem_index'] = self.index_helper[title]
+                    break
+            else:
+                processed_problem['problem_index'] = None
+            processed_problem['problem_id'] = problem['ID']
+            processed_problem['problem_content'] = problem['content']
 
-        if 'problems' in content_dict:
-            for problem in content_dict['problems']:
-                processed_problem = {}
-                if 'ID' in problem:
-                    problem_id = problem['ID']
-                    problem_index = None
-                    for idx, index_dict in enumerate(index_helper):
-                        if isinstance(index_dict, dict) and problem_id in index_dict.keys():
-                            print(isinstance(index_dict, dict), problem_id, index_dict.keys())
-                            problem_index = index_dict[problem_id]
-                            break
+            # Create questions structure
+            processed_problem['questions'] = {}
+            for i in range(1, 3):
+                question_key = f'sub_problem_{i}'
+                sub_prob=problem[question_key]
+                processed_problem['questions'][f'question_{i}'] = {
+                    'question': sub_prob.get('description_of_problem', ''),
+                    'choices': sub_prob.get('options', []),
+                    'answer': sub_prob.get('answers_options', []),
+                    'explanation': sub_prob.get('explanation_of_answer', '')
+                }
 
-                    if problem_index is not None:
-                        processed_problem['problem_index'] = problem_index
-
-                # Create questions structure
-                processed_problem['questions'] = {}
-
-                # Process sub_problem_1
-                if 'sub_problem_1' in problem:
-                    sub_prob_1 = problem['sub_problem_1']
-                    processed_problem['questions']['question_1'] = {
-                        'question': sub_prob_1.get('description_of_problem', ''),
-                        'choices': sub_prob_1.get('options', []),
-                        'answer': sub_prob_1.get('answers', [{}])[0].get('options', []),
-                        'explanation': sub_prob_1.get('answers', [{}])[0].get('explanation', '')
-                    }
-
-                # Process sub_problem_2
-                if 'sub_problem_2' in problem:
-                    sub_prob_2 = problem['sub_problem_2']
-                    processed_problem['questions']['question_2'] = {
-                        'question': sub_prob_2.get('description_of_problem', ''),
-                        'choices': sub_prob_2.get('options', []),
-                        'answer': sub_prob_2.get('answers', [{}])[0].get('options', []),
-                        'explanation': sub_prob_2.get('answers', [{}])[0].get('explanation', '')
-                    }
-
-                problems_list.append(processed_problem)
+            problems_list.append(processed_problem)
 
         return problems_list
 
@@ -490,9 +474,31 @@ class BaseConverter(ABC):
             if line.startswith("#"):
                 level = line.count("#")
                 title = line.lstrip("#").strip()
+                if title.startswith('*'):
+                    title = title.lstrip('*').strip().rstrip('*').strip()
                 titles_with_levels.append({"title": title, "level_of_title": level})
         content_dict["titles_with_levels"] = titles_with_levels
         return content_dict
+
+    def fix_index_helper_with_titles_with_level(self, content_dict: dict):
+        """
+        Fix the index_helper with titles and their levels from the content_dict.
+        """
+        titles_with_levels = content_dict.get("titles_with_levels", [])
+        index_helper = []
+        twl_index = 0
+        for item in self.index_helper:
+            title = list(item.keys())[0].strip()
+            if titles_with_levels[twl_index]["title"] == title:
+                index_helper.append(item)
+                twl_index += 1
+                if twl_index >= len(titles_with_levels):
+                    break
+        assert (twl_index == len(titles_with_levels)), (
+            f"twl_index: {twl_index} != len(titles_with_levels): {len(titles_with_levels)}"
+        )
+        self.index_helper = index_helper
+
     def apply_markdown_structure(
         self, input_md_path: Path | None, file_type: str):
         file_name = input_md_path.stem
@@ -519,6 +525,7 @@ class BaseConverter(ABC):
             content_dict=self.update_content_dict_titles_with_levels(
                 content_dict=content_dict, content_text=content_text
             )
+            self.fix_index_helper_with_titles_with_level(content_dict)
             new_md =content_text
 
         elif header_levels == 1 and file_type == "pdf":
@@ -560,15 +567,16 @@ class BaseConverter(ABC):
         self.update_index_helper(content_dict)
         if 'key_concepts' in content_dict:
             for concept in content_dict['key_concepts']:
-                if 'source_section_title' in concept:
-                    source_title = concept['source_section_title'].strip()
-                    for titles in sorted(self.index_helper.keys(), key=lambda x: len(x)):
-                        if source_title in titles:
-                            concept['source_section_title'] = source_title
-                            concept['source_section_index'] = self.index_helper[source_title]
-                            break
-                    else:
-                        print(f"No match found for: '{source_title}'")
+                source_title = concept['source_section_title'].strip()
+                found = False
+                for titles in self.index_helper.keys():
+                    if source_title in titles:
+                        concept['source_section_title'] = source_title
+                        concept['source_section_index'] = self.index_helper[titles]
+                        found = True
+                        break
+                if not found:
+                    print(f"No match found for: '{source_title}'")
         return content_dict
 
     def update_index_helper(self, content_dict):
@@ -579,6 +587,9 @@ class BaseConverter(ABC):
         for item, level_info in zip(self.index_helper, titles_with_levels):
             title = list(item.keys())[0].strip()
             index = list(item.values())[0]
+            assert(title == level_info["title"]), (
+                f"Title mismatch: {title} != {level_info['title']}"
+            )
             level = level_info["level_of_title"]
             target_index = level - 1
             path_stack = path_stack[:target_index]

@@ -245,3 +245,46 @@ class VideoConverter(BaseConverter):
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(text)
         return md_path
+
+    def update_index_helper(self, content_dict) -> None:
+        """
+        Convert:
+            self.index_helper      : {paragraph_index → start_time}
+            content_dict['titles_with_levels'] : list[{"title", "level_of_title", …}]
+
+        into a new mapping stored back in self.index_helper:
+            "Section>Subsection>…"  →  start_time
+        """
+        # ---------------- Gather and sort the timing info ----------------
+        # Turn {para_idx: time} into an ordered list of (para_idx, time)
+        idx_time_pairs = sorted(self.index_helper.items())  # ascending paragraph order
+        idx_iter = iter(idx_time_pairs)  # we'll step through as we consume titles
+        current_para_idx, current_time = next(idx_iter, (None, None))
+
+        # ---------------- Build the hierarchical keys -------------------
+        result: dict[str, float] = {}
+        path_stack: list[str] = []
+
+        for t in content_dict.get("titles_with_levels", []):
+            title = t["title"].strip()
+            level = int(t["level_of_title"])
+
+            # If you stored "paragraph_index" with each title, just do:
+            # current_time = self.index_helper[t["paragraph_index"]]
+
+            # Keep only ancestors appropriate for this depth, then append this title
+            path_stack = path_stack[: level - 1]
+            path_stack.append(title)
+            full_path = ">".join(path_stack)
+
+            # Map this breadcrumb path to the current start-time
+            result[full_path] = current_time
+
+            # Heuristic: after *paragraph* titles (level 2 here) we advance to
+            # the next timing pair; section titles (#, level 1) reuse the same
+            # start-time, so we *don’t* advance.
+            if level >= 2:  # tweak if your hierarchy is deeper
+                current_para_idx, current_time = next(idx_iter, (current_para_idx, current_time))
+
+        # Replace the helper so callers can do quick look-ups
+        self.index_helper = result
