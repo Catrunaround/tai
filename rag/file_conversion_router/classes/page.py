@@ -289,10 +289,10 @@ class Page:
             final_title = '>'.join(header_list)
             if not final_title:
                 final_title = "No Title"
-            splitted_contents = self.recursive_separate(segment["Segment_print"], 400)
+            split_contents = self.recursive_separate(segment["Segment_print"], 400)
             page_num = segment.get("page_num", None)
 
-            for content_chunk in splitted_contents:
+            for content_chunk in split_contents:
                 if self.page_url:
                     if page_num is not None:
                         urls = f"{self.page_url}#page={page_num}"
@@ -307,7 +307,7 @@ class Page:
                         titles=final_title,
                         chunk_url=urls,
                         page_num=page_num,
-                        is_split=(len(splitted_contents) > 1),
+                        is_split=(len(split_contents) > 1),
                     )
                 )
         # self.post_process_merge_short_chunks(400)
