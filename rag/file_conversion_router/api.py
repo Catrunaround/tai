@@ -16,7 +16,7 @@ from file_conversion_router.utils.course_processor import (
     update_master_config_status,
     get_courses_needing_update,
     mark_course_for_update,
-    merge_course_databases_from_master_config
+    merge_course_databases_from_master_config  # Now supports exclude_test and check_embeddings params
 )
 from file_conversion_router.utils.database_merger import (
     merge_course_databases_into_collective,
@@ -477,6 +477,139 @@ def get_processing_status(db_path: str) -> Dict[str, Any]:
         }
 
 
+# ========================
+# Database Validation Functions
+# ========================
+
+def validate_database_integrity(
+    db_path: str,
+    verbose: bool = True,
+    save_report: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Validate database integrity and check for null columns.
+
+    This function performs comprehensive validation of the database to identify:
+    - Columns that are completely NULL (indicating processing errors)
+    - Empty tables
+    - Missing embeddings
+    - Orphaned records
+
+    Args:
+        db_path: Path to the database to validate
+        verbose: Whether to print detailed report to console (default: True)
+        save_report: Optional path to save the validation report
+
+    Returns:
+        Dictionary containing:
+            - null_columns: List of columns that are completely NULL
+            - empty_tables: List of empty tables
+            - integrity_issues: Count of integrity issues found
+            - embedding_status: Embedding completeness statistics
+            - has_critical_issues: Boolean indicating if critical issues exist
+            - report: Full text report (if verbose=True)
+
+    Example:
+        >>> validation = validate_database_integrity(
+        ...     "data/collective_metadata.db",
+        ...     verbose=True,
+        ...     save_report="validation_report.txt"
+        ... )
+        >>> if validation["has_critical_issues"]:
+        ...     print("Critical issues found!")
+        ...     for col in validation["null_columns"]:
+        ...         print(f"  - {col['table']}.{col['column']} is completely NULL")
+    """
+    from file_conversion_router.utils.database_validator import DatabaseValidator
+
+    try:
+        validator = DatabaseValidator(db_path)
+
+        # Run comprehensive checks
+        integrity_results = validator.check_database_integrity()
+        embedding_results = validator.check_embedding_completeness()
+
+        # Generate report if requested
+        report_text = ""
+        if verbose or save_report:
+            report_text = validator.generate_report(save_report)
+            if verbose:
+                print(report_text)
+
+        # Prepare summary for return
+        validation_summary = {
+            "database_path": db_path,
+            "null_columns": integrity_results.get("null_columns", []),
+            "empty_tables": integrity_results.get("empty_tables", []),
+            "warnings": integrity_results.get("warnings", []),
+            "statistics": integrity_results.get("statistics", {}),
+            "embedding_status": {
+                "files": embedding_results.get("files", {}),
+                "chunks": embedding_results.get("chunks", {}),
+                "issues": embedding_results.get("issues", [])
+            },
+            "has_critical_issues": len(integrity_results.get("null_columns", [])) > 0,
+            "integrity_issues": len(integrity_results.get("warnings", [])),
+            "report": report_text if verbose else None
+        }
+
+        # Log summary
+        logger.info(f"Database validation completed for: {db_path}")
+        logger.info(f"  - NULL columns found: {len(validation_summary['null_columns'])}")
+        logger.info(f"  - Empty tables found: {len(validation_summary['empty_tables'])}")
+        logger.info(f"  - Total warnings: {validation_summary['integrity_issues']}")
+
+        return validation_summary
+
+    except Exception as e:
+        logger.error(f"Error validating database: {str(e)}")
+        raise
+
+
+# ========================
+# Database Merging Functions
+# ========================
+
+def merge_course_databases_with_stats(
+    master_config_path: Optional[str] = None,
+    exclude_test: bool = True,
+    check_embeddings: bool = True
+) -> Dict[str, Any]:
+    """
+    Merge course databases with enhanced statistics and test exclusion.
+
+    This function merges all enabled course databases into a collective database,
+    with options to exclude test databases and check embedding statistics.
+
+    Args:
+        master_config_path: Path to master configuration file
+        exclude_test: Whether to exclude test/demo databases (default: True)
+        check_embeddings: Whether to check embedding statistics after merge (default: True)
+
+    Returns:
+        Dictionary containing:
+            - merge_stats: Database merging statistics
+            - excluded_courses: List of excluded course names
+            - included_courses: List of included course names
+            - embedding_stats: Embedding statistics (if check_embeddings=True)
+                - overall: Total files and chunks with embeddings
+                - by_course: Per-course embedding statistics
+
+    Example:
+        >>> results = merge_course_databases_with_stats(
+        ...     exclude_test=True,
+        ...     check_embeddings=True
+        ... )
+        >>> print(f"Merged {len(results['included_courses'])} courses")
+        >>> print(f"Files with embeddings: {results['embedding_stats']['overall']['files_embedded']}")
+    """
+    return merge_course_databases_from_master_config(
+        master_config_path=master_config_path,
+        exclude_test=exclude_test,
+        check_embeddings=check_embeddings
+    )
+
+
 # Re-export main functions for backward compatibility
 __all__ = [
     # YAML utilities
@@ -497,6 +630,7 @@ __all__ = [
     'merge_all_course_databases_in_directory',
     'merge_databases_by_list',
     'merge_course_databases_from_master_config',
+    'merge_course_databases_with_stats',  # New enhanced function
 
     # Embedding functions
     'embedding_create',
@@ -510,7 +644,8 @@ __all__ = [
 
     # Utility functions
     'validate_course_config',
-    'get_processing_status'
+    'get_processing_status',
+    'validate_database_integrity'  # New database validation function
 ]
 
 
@@ -568,9 +703,21 @@ if __name__ == "__main__":
     # status = get_processing_status("data/CS61A_metadata.db")
     # print(f"Processing status: {status}")
 
-    # Example 7: Merge databases after processing
+    # Example 7: Merge databases after processing (OLD WAY - includes test databases)
     # merge_stats = merge_course_databases_from_master_config()
     # print(f"Merge completed: {merge_stats}")
+
+    # Example 8: Merge databases with test exclusion and embedding check (RECOMMENDED)
+    # results = merge_course_databases_with_stats(
+    #     exclude_test=True,      # Skip test/demo databases
+    #     check_embeddings=True   # Check embedding statistics
+    # )
+    # print(f"Merged courses: {results['included_courses']}")
+    # print(f"Excluded courses: {results['excluded_courses']}")
+    # if 'overall' in results.get('embedding_stats', {}):
+    #     stats = results['embedding_stats']['overall']
+    #     print(f"Files with embeddings: {stats.get('files_embedded', 0)}/{stats.get('total_files', 0)}")
+    #     print(f"Chunks with embeddings: {stats.get('chunks_embedded', 0)}/{stats.get('total_chunks', 0)}")
 
     # Default: Process all courses with embeddings enabled
     logger.info("Starting batch processing with auto-embedding...")
