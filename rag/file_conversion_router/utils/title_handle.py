@@ -8,6 +8,27 @@ import json
 import re
 from loguru import logger
 
+# Import schema builders and utilities for better code organization
+from .title_handle_helpers import (
+    build_check_in_question_schema,
+    build_content_coverage_schema,
+    build_recap_questions_schema,
+    build_problems_schema,
+    build_speaker_schema,
+    build_key_concepts_schema,
+    build_paragraphs_schema,
+    build_sections_schema,
+    prepare_title_list,
+    count_paragraphs as count_paragraphs_util,
+    MAX_KEY_CONCEPTS,
+    MAX_RECAP_QUESTIONS,
+    MAX_SECTIONS
+)
+
+
+# =============================================================================
+# MAIN CONTENT PROCESSING FUNCTIONS FOR IPYNB FILES
+# =============================================================================
 
 def get_strutured_content_for_ipynb(
         md_content: str, file_name: str, course_name: str,index_helper: dict = None
@@ -105,168 +126,9 @@ def get_strutured_content_for_ipynb(
                 'schema': {
                     'type': 'object',
                     'properties': {
-                        'key_concepts': {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "concepts": {"type": "string"},
-                                    "source_section_title": {"type": "string",
-                                                             "enum": title_list,
-                                                                'description': 'The single, exact title from title_list that this concept is derived from.'
-                                                             },
-                                    "check_in_question": {
-                                        "type": "object",
-                                        "properties": {
-                                            "question_text": {"type": "string", "description": "The full text of the multiple-choice question."},
-                                            "options": {"type": "array", "items": {"type": "string"}, 'minItems': 4, "description": "An array containing exactly four possible answers."},
-                                            "correct_answer": {"type": "array", "items": {"type": "integer"}, "description": "The indices of the correct options in the options array, e.g. [0,1] for the first and second options."},
-                                            "explanation": {"type": "string", "description": "A detailed explanation describing why the correct answer is right and why the other options are incorrect."}
-                                        },
-                                        "required": ["question_text", "options", "correct_answer", "explanation"],
-                                        "additionalProperties": False
-                                    },
-                                    "content_coverage": {
-                                        "type": "array",
-                                        "description": "List only the aspects that the section actually explained with aspect and content.",
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "aspect": {"type": "string",
-                                                           'minLength': 1,},
-                                                "content": {"type": "string"},
-                                            },
-                                            "required": ["aspect", "content"],
-                                            "additionalProperties": False,
-                                        },
-                                    },
-                                },
-                                "required": [
-                                    "concepts",
-                                    "source_section_title",
-                                    "check_in_question",
-                                    "content_coverage",
-                                ],
-                                "additionalProperties": False,
-                            },
-                        },
-                        'problems': {
-                            "type": "array",
-                            'items': {
-                                "type": "object",
-                                "properties": {
-                                    "ID": {
-                                        "type": "string",
-                                        'description': 'Which Exercise id this problem belongs to, e.g. "Exercise 1","Challenge 1"'
-                                    },
-                                    'content': {
-                                        'type': "string",
-                                        'description': 'The whole content of Exercise or Challenge. Do not miss or change any part of the description.'
-                                    },
-                                    "sub_problem_1": {
-                                        'type': "object",
-                                        'properties': {
-                                            'description_of_problem': {
-                                                'type': 'string',
-                                                'description': 'A multiple-choice question that better contains at least two correct options. Its purpose is to help students understand the problem statement and identify the underlying concepts. e.g. "What knowledge are involved in this problem?"'
-                                            },
-                                            'options': {
-                                                'type': 'array',
-                                                'items': {'type': 'string'},
-                                                'minItems': 2,
-                                                'description': 'The options for the sub problem, they should be key_concepts in the md_content'
-                                            },
-                                            'answers_options': {
-                                                'type': 'array',
-                                                'items': {'type': 'integer'},
-                                                'description': 'The index of the option in the options array, e.g. [0,1] for the first and second options'
-                                            },
-                                            'explanation_of_answer': {
-                                                'type': 'string',
-                                                'description': 'The explanation of why this option is the answer, it should be a key_concept in the md_content'
-                                            },
-                                        },
-                                        'required': ['description_of_problem', 'options', 'answers_options',
-                                                     'explanation_of_answer'],
-                                        'additionalProperties': False,
-                                    },
-                                    "sub_problem_2": {
-                                        'type': "object",
-                                        'properties': {
-                                            'description_of_problem': {
-                                                'type': 'string',
-                                                'description': 'A multiple-choice question that better contain at least two correct options. Its purpose is to guide students in designing an approach or solution framework. e.g. "Which methods could be applied to solve this problem effectively?"'
-                                            },
-                                            'options': {
-                                                'type': 'array',
-                                                'items': {'type': 'string'},
-                                                "minItems": 2,
-                                                'description': 'The options for the sub problem, they should be key_concepts in the md_content'
-                                            },
-                                            'answers_options': {
-                                                'type': 'array',
-                                                'items': {'type': 'integer'},
-                                                'description': 'The index of the option in the options array, e.g. [0,1] for the first and second options'
-                                            },
-                                            'explanation_of_answer': {
-                                                'type': 'string',
-                                                'description': 'The explanation of why this option is the answer, it should be a key_concept in the md_content'
-                                            },
-                                        },
-                                        'required': ['description_of_problem', 'options', 'answers_options',
-                                                     'explanation_of_answer'],
-                                        'additionalProperties': False,
-                                    },
-                                },
-                                'required': ['ID', 'content', 'sub_problem_1', 'sub_problem_2'],
-                                'additionalProperties': False,
-                            }
-                        },
-                        'recap_questions': {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "question_id": {"type": "integer", "description": "Sequential number starting from 1"},
-                                    "question_type": {
-                                        "type": "string",
-                                        "enum": ["recap"],
-                                    },
-                                    "question_text": {
-                                        "type": "string",
-                                        "description": "The complete text of the multiple-choice recap question"
-                                    },
-                                    "options": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "minItems": 4,
-                                        "maxItems": 4,
-                                        "description": "Exactly four possible answers"
-                                    },
-                                    "correct_answers": {
-                                        "type": "array",
-                                        "items": {"type": "integer"},
-                                        "minItems": 1,
-                                        "maxItems": 2,
-                                        "description": "Indices of correct options (0-3), minimum 1, maximum 2"
-                                    },
-                                    "explanation": {
-                                        "type": "string",
-                                        "description": "Detailed explanation of why the correct answers are right and others are wrong"
-                                    },
-                                    "knowledge_areas": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "Key knowledge areas this question tests"
-                                    }
-                                },
-                                "required": ["question_id", "question_type", "question_text", "options", "correct_answers", "explanation", "knowledge_areas"],
-                                "additionalProperties": False
-                            },
-                            "minItems": 0,
-                            "maxItems": 5,
-                            "description": "0-5 recap questions for review and self-check, ordered from easy to moderate"
-                        }
+                        'key_concepts': build_key_concepts_schema(title_list),
+                        'problems': build_problems_schema(),
+                        'recap_questions': build_recap_questions_schema()
                     },
                     'required': ['key_concepts', 'problems', 'recap_questions'],
                     'additionalProperties': False,
@@ -281,8 +143,24 @@ def get_strutured_content_for_ipynb(
     return content_dict
 
 
+# =============================================================================
+# CONTENT VALIDATION AND CLEANUP UTILITIES
+# =============================================================================
+
 def remove_invalid_concepts(content_dict, title_list):
-    """Remove key concepts that don't have valid source_section_titles and clean up title_with_levels"""
+    """
+    Remove key concepts that don't have valid source_section_titles.
+
+    This function validates that all key concepts reference valid section titles
+    from the provided title list and removes any invalid concepts.
+
+    Args:
+        content_dict: Dictionary containing key_concepts array
+        title_list: List of valid section titles
+
+    Returns:
+        Updated content_dict with only valid concepts
+    """
     valid_concepts = []
     removed_concepts = []
 
@@ -302,10 +180,25 @@ def remove_invalid_concepts(content_dict, title_list):
     return content_dict
 
 
-# Add this after getting the response
-
+# =============================================================================
+# CONTENT PROCESSING FOR FILES WITHOUT TITLES
+# =============================================================================
 
 def generate_json_schema_for_no_title(paragraph_count: int, course_name: str, file_name: str):
+    """
+    Generate system prompt and JSON schema for content without existing titles.
+
+    This function creates the appropriate prompt and schema based on paragraph count.
+    For content with more than 5 paragraphs, it includes section grouping.
+
+    Args:
+        paragraph_count: Number of paragraphs in the content
+        course_name: Name of the course
+        file_name: Name of the file being processed
+
+    Returns:
+        Tuple of (message_content, response_format) for OpenAI API
+    """
     if paragraph_count > 5:
         message_content = dedent(
         f""" You are an expert AI assistant specializing in analyzing and structuring educational material. You will be given markdown content from a video in the course "{course_name}", from the file "{file_name}". The text is already divided into paragraphs. Your task is to perform the following actions and format the output as a single JSON object.
@@ -371,6 +264,23 @@ def generate_json_schema_for_no_title(paragraph_count: int, course_name: str, fi
         - `speaker_id` (e.g., "Speaker_00")
         - `role` (properly numbered according to rules above)
         """)
+        # Build schema using helper functions for better readability
+        key_concepts_schema = {
+            "type": "array",
+            "description": "A list of key concepts extracted from the sections.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "concepts": {"type": "string"},
+                    "source_section_title": {"type": "string"},
+                    "check_in_question": build_check_in_question_schema(),
+                    "content_coverage": build_content_coverage_schema()
+                },
+                "required": ["concepts", "source_section_title", "check_in_question", "content_coverage"],
+                "additionalProperties": False
+            }
+        }
+
         response_format = {
             "type": "json_schema",
             "json_schema": {
@@ -379,143 +289,11 @@ def generate_json_schema_for_no_title(paragraph_count: int, course_name: str, fi
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "paragraphs": {
-                            "type": "array",
-                            "minItems": paragraph_count,
-                            "maxItems": paragraph_count,
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {"type": "string"},
-                                    "paragraph_index": {"type": "integer",
-                                                        "description": "The 1-based index from the paragraphs array where this paragraph is located."},
-                                },
-                                "required": ["title", "paragraph_index"],
-                                "additionalProperties": False,
-                            },
-                        },
-                        "sections": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "maxItems": 5,
-                                "properties": {
-                                    "section_title": {"type": "string"},
-                                    "start_paragraph_index": {
-                                        "type": "integer",
-                                        "description": "The 1-based index from the paragraphs array where this section begins.",
-                                        "minimum": 1,
-                                        "maximum": paragraph_count,
-                                    },
-                                },
-                                "required": ["section_title", "start_paragraph_index"],
-                                "additionalProperties": False,
-                            },
-                        },
-                        "key_concepts": {
-                            "type": "array",
-                            "description": "A list of key concepts extracted from the sections.",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "concepts": {"type": "string"},
-                                    "source_section_title": {"type": "string"},
-                                    "check_in_question": {"type": "object",
-                                        "properties": {
-                                            "question_text": {"type": "string","description": "(String) The full text of the multiple-choice question."},
-                                            "options": {"type": "array", "items": {"type": "string"}, 'minItems': 2, "description": "(Array of Strings) An array containing exactly four possible answers."},
-                                            "correct_answer": {"type": "array", "items": {"type": "integer"}, "description": "The index of the option in the options array, e.g. [0,1] for the first and second options"},
-                                            "explanation": {"type": "string","description": "The explanation of why this option is the answer, it should be a key_concept in the md_content"},
-                                        },
-                                        "required": ["question_text", "options", "correct_answer", "explanation"],
-                                        "additionalProperties": False
-                                    },
-                                    "content_coverage": {
-                                        "type": "array",
-                                        'description': 'List only the aspects that the section actually explained with aspect and content.',
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "aspect": {"type": "string",
-                                                           'minLength': 1,},
-                                                "content": {"type": "string"},
-                                            },
-                                            "required": ["aspect", "content"],
-                                            "additionalProperties": False,
-                                        },
-                                    },
-                                },
-                                "required": [
-                                    "concepts",
-                                    "source_section_title",
-                                    "check_in_question",
-                                    "content_coverage",
-                                ],
-                                "additionalProperties": False,
-                            },
-                        },
-                        'recap_questions': {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "question_id": {"type": "integer", "description": "Sequential number starting from 1"},
-                                    "question_type": {
-                                        "type": "string",
-                                        "enum": ["recap"],
-                                    },
-                                    "question_text": {
-                                        "type": "string",
-                                        "description": "The complete text of the multiple-choice recap question"
-                                    },
-                                    "options": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "minItems": 4,
-                                        "maxItems": 4,
-                                        "description": "Exactly four possible answers"
-                                    },
-                                    "correct_answers": {
-                                        "type": "array",
-                                        "items": {"type": "integer"},
-                                        "minItems": 1,
-                                        "maxItems": 2,
-                                        "description": "Indices of correct options (0-3), minimum 1, maximum 2"
-                                    },
-                                    "explanation": {
-                                        "type": "string",
-                                        "description": "Detailed explanation of why the correct answers are right and others are wrong"
-                                    },
-                                    "knowledge_areas": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "Key knowledge areas this question tests"
-                                    }
-                                },
-                                "required": ["question_id", "question_type", "question_text", "options", "correct_answers", "explanation", "knowledge_areas"],
-                                "additionalProperties": False
-                            },
-                            "minItems": 0,
-                            "maxItems": 5,
-                            "description": "0-5 recap questions for review and self-check, ordered from easy to moderate"
-                        },
-                        "speakers": {
-                            "type": "array",
-                            "description": "A list of speakers identified in the content along with their inferred roles.",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "speaker_id": {"type": "string",
-                                                   "description": "The unique identifier for the speaker, e.g., 'Speaker_00'."},
-                                    "role": {
-                                        "type": "string",
-                                        "description": "The speaker identifier. PRIORITY: Use actual name if speaker introduces themselves (e.g., 'I am John', 'My name is Sarah'). FALLBACK: Use numbered roles (Professor, TA_1, TA_2, Student_1, Student_2, Unknown_1, etc.) only if no name is detected."
-                                    },
-                                },
-                                "required": ["speaker_id", "role"],
-                                "additionalProperties": False,
-                            },
-                        },
+                        "paragraphs": build_paragraphs_schema(paragraph_count),
+                        "sections": build_sections_schema(paragraph_count),
+                        "key_concepts": key_concepts_schema,
+                        "recap_questions": build_recap_questions_schema(),
+                        "speakers": build_speaker_schema()
                     },
                     "required": ["paragraphs", "sections", "key_concepts", "recap_questions", "speakers"],
                     "additionalProperties": False,
@@ -591,6 +369,26 @@ def generate_json_schema_for_no_title(paragraph_count: int, course_name: str, fi
             Include these mappings in the JSON under a top-level key `speakers`. Each speaker must have:
             - `speaker_id` (e.g., "Speaker_00")
             - `role` (actual name if detected, otherwise properly numbered role according to rules above)""")
+        # Build schema for few paragraphs case using helper functions
+        key_concepts_schema = {
+            "type": "array",
+            "description": "A list of key concepts extracted from the sections.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "concepts": {"type": "string"},
+                    "source_section_title": {
+                        "type": "string",
+                        "description": "Exactly the section title as it appears in the paragraphs, only one title from the list, only start with # can be used, do not include # and any *. Do not treat the line start with * as a title, it is not a title."
+                    },
+                    "check_in_question": build_check_in_question_schema(),
+                    "content_coverage": build_content_coverage_schema()
+                },
+                "required": ["concepts", "source_section_title", "check_in_question", "content_coverage"],
+                "additionalProperties": False
+            }
+        }
+
         response_format = {
             "type": "json_schema",
             "json_schema": {
@@ -599,129 +397,10 @@ def generate_json_schema_for_no_title(paragraph_count: int, course_name: str, fi
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "paragraphs": {
-                            "type": "array",
-                            "minItems": paragraph_count,
-                            "maxItems": paragraph_count,
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {"type": "string",
-                                              "description": "The title of the paragraph, reflecting its main topic.(each paragraph should have only one title)"},
-                                    "paragraph_index": {"type": "integer",
-                                                        "description": "The 1-based index from the paragraphs array where this paragraph is located.",
-                                                        "maximum": paragraph_count
-                                                        },
-                                },
-                                "required": ["title", "paragraph_index"],
-                                "additionalProperties": False,
-                            },
-                        },
-                        "key_concepts": {
-                            "type": "array",
-                            "description": "A list of key concepts extracted from the sections.",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "concepts": {"type": "string"},
-                                    "source_section_title": {"type": "string","description": "Exactly the section title as it appears in the paragraphs, only one title from the list, only start with # can be used, do not include # and any *. Do not treat the line start with * as a title, it is not a title."},
-                                    "check_in_question": {
-                                    "type": "object",
-                                    "properties": {
-                                        "question_text": {"type": "string", "description": "(String) The full text of the multiple-choice question."},
-                                        "options": {"type": "array", "items": {"type": "string"}, 'minItems': 4, "description": "(Array of Strings) An array containing exactly four possible answers."},
-                                        "correct_answer": {"type": "array", "items": {"type": "integer"}, "description": "The index of the option in the options array, e.g. [0,1] for the first and second options"},
-                                        "explanation": {"type": "string", "description": "The explanation of why this option is the answer, it should be a key_concept in the md_content"},
-                                        },
-                                        "required": ["question_text", "options", "correct_answer", "explanation"],
-                                        "additionalProperties": False
-                                    },
-                                    "content_coverage": {
-                                        "type": "array",
-                                        'description': 'List only the aspects that the section actually explained with aspect and content.',
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "aspect": {"type": "string",
-                                                            'minLength': 1,
-                                                           "description": "The type of information (e.g., Definition, Core Principle, Example, Significance, Mechanism)."},
-                                                "content": {"type": "string"},
-                                            },
-                                            "required": ["aspect", "content"],
-                                            "additionalProperties": False,
-                                        },
-                                    },
-                                },
-                                "required": [
-                                    "concepts",
-                                    "source_section_title",
-                                    "check_in_question",
-                                    "content_coverage",
-                                ],
-                                "additionalProperties": False,
-                            },
-                        },
-                        'recap_questions': {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "question_id": {"type": "integer", "description": "Sequential number starting from 1"},
-                                    "question_type": {
-                                        "type": "string",
-                                        "enum": ["recap"],
-                                    },
-                                    "question_text": {
-                                        "type": "string",
-                                        "description": "The complete text of the multiple-choice recap question"
-                                    },
-                                    "options": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "minItems": 4,
-                                        "maxItems": 4,
-                                        "description": "Exactly four possible answers"
-                                    },
-                                    "correct_answers": {
-                                        "type": "array",
-                                        "items": {"type": "integer"},
-                                        "minItems": 1,
-                                        "maxItems": 2,
-                                        "description": "Indices of correct options (0-3), minimum 1, maximum 2"
-                                    },
-                                    "explanation": {
-                                        "type": "string",
-                                        "description": "Detailed explanation of why the correct answers are right and others are wrong"
-                                    },
-                                    "knowledge_areas": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "Key knowledge areas this question tests"
-                                    }
-                                },
-                                "required": ["question_id", "question_type", "question_text", "options", "correct_answers", "explanation", "knowledge_areas"],
-                                "additionalProperties": False
-                            },
-                            "minItems": 0,
-                            "maxItems": 5,
-                            "description": "0-5 recap questions for review and self-check, ordered from easy to moderate"
-                        },
-                        "speakers": {
-                            "type": "array",
-                            "description": "A list of speakers identified in the content along with their inferred roles.",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "speaker_id": {"type": "string", "description": "The unique identifier for the speaker, e.g., 'Speaker_00'."},
-                                    "role": {
-                                        "type": "string",
-                                        "description": "The speaker identifier. PRIORITY: Use actual name if speaker introduces themselves (e.g., 'I am John', 'My name is Sarah'). FALLBACK: Use numbered roles (Professor, TA_1, TA_2, Student_1, Student_2, Unknown_1, etc.) only if no name is detected."
-                                    },
-                                },
-                                "required": ["speaker_id", "role"],
-                                "additionalProperties": False,
-                            },
-                        },
+                        "paragraphs": build_paragraphs_schema(paragraph_count),
+                        "key_concepts": key_concepts_schema,
+                        "recap_questions": build_recap_questions_schema(),
+                        "speakers": build_speaker_schema()
                     },
                     "required": ["paragraphs", "key_concepts", "recap_questions", "speakers"],
                     "additionalProperties": False,
@@ -734,20 +413,31 @@ def generate_json_schema_for_no_title(paragraph_count: int, course_name: str, fi
 def get_structured_content_without_title(
         md_content: str, file_name: str, course_name: str,
 ):
+    """
+    Process markdown content that doesn't have existing titles.
+
+    This function analyzes unstructured content, generates appropriate titles,
+    sections, and extracts key concepts with assessment questions.
+
+    Args:
+        md_content: The markdown content to process
+        file_name: Name of the file being processed
+        course_name: Name of the course
+
+    Returns:
+        Dictionary with structured content including titles, sections, key concepts
+    """
     load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
     client = OpenAI(api_key=api_key)
 
-    def paragraph_count(md_text: str) -> int:
-        md_text = md_text.strip()
-        blocks = re.split(r'\n\s*\n', md_text)
-        paragraphs = [b for b in blocks if b.strip()]
-        return len(paragraphs)
+    # Count paragraphs to determine processing strategy
+    para_count = count_paragraphs_util(md_content)
+    message_content, response_format = generate_json_schema_for_no_title(para_count, course_name, file_name)
 
-    paragraph_count = paragraph_count(md_content)
-    message_content, response_format = generate_json_schema_for_no_title(paragraph_count, course_name, file_name)
     if not md_content.strip():
         raise ValueError("The content is empty or not properly formatted.")
+
     response = client.chat.completions.create(
         model="gpt-4.1",
         messages=[{
@@ -763,6 +453,10 @@ def get_structured_content_without_title(
     content_dict = json.loads(data)
     return content_dict
 
+
+# =============================================================================
+# CONTENT PROCESSING FOR FILES WITH ONE TITLE LEVEL
+# =============================================================================
 
 def get_structured_content_with_one_title_level(
         md_content: str, file_name: str, course_name: str, index_helper: dict
@@ -790,6 +484,28 @@ def get_structured_content_with_one_title_level(
             ],
             "key_concepts": []
         }
+    # Build schema using helper functions for better readability
+    titles_with_levels_schema = {
+        "type": "array",
+        "description": "A list of titles with their inferred hierarchical level, preserving the original order.",
+        "items": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "enum": title_list,
+                    "description": "MUST be exactly one of the titles from the provided list, without any # symbols and leading/trailing spaces."
+                },
+                "level_of_title": {
+                    "type": "integer",
+                    "description": "The inferred hierarchy level (e.g., 1, 2, 3).",
+                },
+            },
+            "required": ["title", "level_of_title"],
+            "additionalProperties": False,
+        },
+    }
+
     response_format = {
             "type": "json_schema",
             "json_schema": {
@@ -798,119 +514,9 @@ def get_structured_content_with_one_title_level(
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "titles_with_levels": {
-                            "type": "array",
-                            "description": "A list of titles with their inferred hierarchical level, preserving the original order.",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "enum": title_list,
-                                        "description": "MUST be exactly one of the titles from the provided list, without any # symbols and leading/trailing spaces."
-                                    },
-                                    "level_of_title": {
-                                        "type": "integer",
-                                        "description": "The inferred hierarchy level (e.g., 1, 2, 3).",
-                                    },
-                                },
-                                "required": ["title", "level_of_title"],
-                                "additionalProperties": False,
-                            },
-                        },
-                        "key_concepts": {
-                            "type": "array",
-                            "description": "A list of key concepts extracted from the sections.",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "concepts": {"type": "string"},
-                                    "source_section_title": {
-                                        "type": "string",
-                                        "enum": title_list,
-                                        "description": "*Exactly* the section title as it appears in the markdown (copy‑paste—do **not** alter capitalization, spacing, or punctuation and do not include # and any *)."
-                                    },
-                                    "check_in_question": {
-                                        "type": "object",
-                                        "properties": {
-                                            "question_text": {"type": "string", "description": "The full text of the multiple-choice question."},
-                                            "options": {"type": "array", "items": {"type": "string"}, 'minItems': 4, "description": "An array containing exactly four possible answers."},
-                                            "correct_answer": {"type": "array", "items": {"type": "integer"}, "description": "The indices of the correct options in the options array, e.g. [0,1] for the first and second options."},
-                                            "explanation": {"type": "string", "description": "A detailed explanation describing why the correct answer is right and why the other options are incorrect."}
-                                        },
-                                        "required": ["question_text", "options", "correct_answer", "explanation"],
-                                        "additionalProperties": False
-                                    },
-                                    "content_coverage": {
-                                        "type": "array",
-                                        'description': 'List only the aspects that the section actually explained with aspect and content.',
-                                        "items": {
-                                            "type": "object",
-                                            "properties": {
-                                                "aspect": {"type": "string",
-                                                            'minLength': 1,
-                                                           "description": "The type of information (e.g., Definition, Core Principle, Example, Significance, Mechanism)."},
-                                                "content": {"type": "string"},
-                                            },
-                                            "required": ["aspect", "content"],
-                                            "additionalProperties": False,
-                                        },
-                                    },
-                                },
-                                "required": [
-                                    "concepts",
-                                    "source_section_title",
-                                    "check_in_question",
-                                    "content_coverage",
-                                ],
-                                "additionalProperties": False,
-                            },
-                        },
-                        'recap_questions': {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "question_id": {"type": "integer", "description": "Sequential number starting from 1"},
-                                    "question_type": {
-                                        "type": "string",
-                                        "enum": ["recap"],
-                                    },
-                                    "question_text": {
-                                        "type": "string",
-                                        "description": "The complete text of the multiple-choice recap question"
-                                    },
-                                    "options": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "minItems": 4,
-                                        "maxItems": 4,
-                                        "description": "Exactly four possible answers"
-                                    },
-                                    "correct_answers": {
-                                        "type": "array",
-                                        "items": {"type": "integer"},
-                                        "minItems": 1,
-                                        "maxItems": 2,
-                                        "description": "Indices of correct options (0-3), minimum 1, maximum 2"
-                                    },
-                                    "explanation": {
-                                        "type": "string",
-                                        "description": "Detailed explanation of why the correct answers are right and others are wrong"
-                                    },
-                                    "knowledge_areas": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "Key knowledge areas this question tests"
-                                    }
-                                },
-                                "required": ["question_id", "question_type", "question_text", "options", "correct_answers", "explanation", "knowledge_areas"],
-                                "additionalProperties": False
-                            },
-                            "minItems": 0,
-                            "maxItems": 5,
-                            "description": "0-5 recap questions for review and self-check, ordered from easy to moderate"
-                        }
+                        "titles_with_levels": titles_with_levels_schema,
+                        "key_concepts": build_key_concepts_schema(title_list),
+                        "recap_questions": build_recap_questions_schema()
                     },
                     "required": ["titles_with_levels", "key_concepts", "recap_questions"],
                     "additionalProperties": False,
@@ -986,7 +592,20 @@ def get_structured_content_with_one_title_level(
     return content_dict
 
 
+# =============================================================================
+# CONTENT MANIPULATION AND EXTRACTION UTILITIES
+# =============================================================================
+
 def get_title_list(md_content: str):
+    """
+    Extract all titles from markdown content.
+
+    Args:
+        md_content: The markdown content to parse
+
+    Returns:
+        List of title strings (without # markers)
+    """
     lines = md_content.split("\n")
     titles = []
     for line in lines:
@@ -1153,10 +772,27 @@ def save_key_concept_to_metadata(json_dict, metadata_path: Path):
 
 
 def get_only_key_concepts(md_content: str, index_helper: dict):
+    """
+    Extract key concepts and recap questions from markdown content.
+
+    This function generates educational metadata without restructuring the content.
+    It focuses on identifying main concepts and creating assessment questions.
+
+    Args:
+        md_content: The markdown content to analyze
+        index_helper: Optional dictionary mapping titles to their positions
+
+    Returns:
+        Dictionary with key_concepts and recap_questions arrays
+    """
     load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
     client = OpenAI(api_key=api_key)
-    title_list = [key.replace('"',"'") for d in index_helper for key in d.keys()] if index_helper else get_title_list(md_content)
+
+    # Prepare title list from index_helper or extract from content
+    title_list = prepare_title_list(index_helper) if index_helper else get_title_list(md_content)
+
+    # Build response format using helper function
     response_format = {
         "type": "json_schema",
         "json_schema": {
@@ -1165,99 +801,8 @@ def get_only_key_concepts(md_content: str, index_helper: dict):
             "schema": {
                 "type": "object",
                 "properties": {
-                    "key_concepts": {
-                        "type": "array",
-                        'description': 'A list of key concepts extracted from the content.',
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "concepts": {"type": "string",
-                                             "description": "A single, clear phrase summarizing the core idea of the section."},
-                                "source_section_title": {"type": "string",
-                                                         "enum": title_list,
-                                                         "description": "MUST be exactly one of the titles from the provided list."},
-                                "check_in_question": {
-                                    "type": "object",
-                                    "properties": {
-                                        "question_text": {"type": "string", "description": "The full text of the multiple-choice question."},
-                                        "options": {"type": "array", "items": {"type": "string"}, 'minItems': 4, "description": "An array containing exactly four possible answers."},
-                                        "correct_answer": {"type": "array", "items": {"type": "integer"}, "description": "The indices of the correct options in the options array, e.g. [0,1] for the first and second options."},
-                                        "explanation": {"type": "string", "description": "A detailed explanation describing why the correct answer is right and why the other options are incorrect."}
-                                    },
-                                    "required": ["question_text", "options", "correct_answer", "explanation"],
-                                    "additionalProperties": False
-                                },
-                                "content_coverage": {
-                                    "type": "array",
-                                    "description": "A list of key aspects explained within that section block.",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "aspect": {"type": "string",
-                                                        "minLength": 1,
-                                                       "description": "The type of information (e.g., Definition, Core Principle, Example, Significance, Mechanism)."},
-                                            "content": {"type": "string"},
-                                        },
-                                        "required": ["aspect", "content"],
-                                        "additionalProperties": False,
-                                    },
-                                },
-                            },
-                            "required": [
-                                "concepts",
-                                "source_section_title",
-                                "check_in_question",
-                                "content_coverage",
-                            ],
-                            "additionalProperties": False,
-                        },
-                    },
-                    'recap_questions': {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "question_id": {"type": "integer", "description": "Sequential number starting from 1"},
-                                "question_type": {
-                                    "type": "string",
-                                    "enum": ["recap"],
-                                    "description": "Type of question for review and self-check"
-                                },
-                                "question_text": {
-                                    "type": "string",
-                                    "description": "The complete text of the multiple-choice recap question"
-                                },
-                                "options": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "minItems": 4,
-                                    "maxItems": 4,
-                                    "description": "Exactly four possible answers"
-                                },
-                                "correct_answers": {
-                                    "type": "array",
-                                    "items": {"type": "integer"},
-                                    "minItems": 1,
-                                    "maxItems": 2,
-                                    "description": "Indices of correct options (0-3), minimum 1, maximum 2"
-                                },
-                                "explanation": {
-                                    "type": "string",
-                                    "description": "Detailed explanation of why the correct answers are right and others are wrong"
-                                },
-                                "knowledge_areas": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "Key knowledge areas this question tests"
-                                }
-                            },
-                            "required": ["question_id", "question_type", "question_text", "options", "correct_answers", "explanation", "knowledge_areas"],
-                            "additionalProperties": False
-                        },
-                        "minItems": 0,
-                        "maxItems": 5,
-                        "description": "0-5 recap questions for review and self-check, ordered from easy to moderate"
-                    }
+                    "key_concepts": build_key_concepts_schema(title_list),
+                    "recap_questions": build_recap_questions_schema()
                 },
                 "required": ["key_concepts", "recap_questions"],
                 "additionalProperties": False,
@@ -1317,7 +862,21 @@ def get_only_key_concepts(md_content: str, index_helper: dict):
     return content_dict
 
 
+# =============================================================================
+# TRANSCRIPT MANAGEMENT AND PROCESSING
+# =============================================================================
+
 def add_titles_to_json(index_helper, json_file_path):
+    """
+    Insert title entries into a transcript JSON file based on timing.
+
+    Args:
+        index_helper: Dictionary mapping titles to their start times
+        json_file_path: Path to the JSON transcript file
+
+    Returns:
+        None (modifies the JSON file in place)
+    """
     """
     Insert title entries into a transcript list based on timing information.
 
@@ -1394,22 +953,24 @@ def get_next_start_time(transcript_list, position):
     return transcript_list[position]["start time"]
 
 
+# =============================================================================
+# SPEAKER ROLE IDENTIFICATION AND ASSIGNMENT
+# =============================================================================
+
 def assign_speaker_roles_to_content(md_content: str, speakers_mapping: list, json_file_path: str = None):
     """
-    Replace speaker IDs (Speaker_00, Speaker_01, etc.) with their assigned roles in both MD content and JSON file.
-    
+    Replace speaker IDs with their assigned roles in markdown content.
+
     Args:
-        md_content (str): The markdown content with speaker tags
-        speakers_mapping (list): List of speaker mappings from ChatGPT analysis, e.g. 
-                               [{"speaker_id": "Speaker_00", "role": "Professor"}, 
-                                {"speaker_id": "Speaker_01", "role": "TA_1"},
-                                {"speaker_id": "Speaker_02", "role": "Student_1"}, ...]
-        json_file_path (str, optional): Path to JSON transcript file to also update
-    
+        md_content: Markdown content with speaker tags (e.g., Speaker_00:)
+        speakers_mapping: List of dicts with speaker_id and role mappings
+        json_file_path: Optional path to JSON transcript file to also update
+
     Returns:
-        str: Updated markdown content with speaker roles replaced
-        
-    Note: Now supports numbered roles like TA_1, TA_2, Student_1, Student_2, etc.
+        Updated markdown content with roles instead of IDs
+
+    Note:
+        Supports numbered roles like TA_1, TA_2, Student_1, Student_2, etc.
     """
     if not speakers_mapping:
         logger.warning("No speakers mapping provided, returning original content")
