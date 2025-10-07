@@ -23,7 +23,7 @@ courses:
     config_path: /home/bot/bot/yk/YK_final/course_yaml/test.yaml
     enabled: true
     last_updated: '2025-09-30T18:35:08.518510'
-    needs_update: false
+    needs_update: true
 global:
   base_config_dir: /home/bot/bot/yk/YK_final/course_yaml
   base_output_dir: /home/bot/bot/yk/YK_final/courses_out

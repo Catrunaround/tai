@@ -45,7 +45,10 @@ class WebScraper:
         # Create driver based on task configuration
         if task["driver_type"] not in DRIVER_MAPPING:
             raise ValueError(f"Unknown driver type: {task['driver_type']}")
-        driver = DRIVER_MAPPING[task["driver_type"]]()
+
+        # Extract driver options from config
+        driver_options = task.get("driver_options", {})
+        driver = DRIVER_MAPPING[task["driver_type"]](**driver_options)
 
         self.task_folder_path = self.root_folder / task["name"]
 
