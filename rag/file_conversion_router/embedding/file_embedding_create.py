@@ -259,54 +259,111 @@ def get_file_vector(db_path: str, uuid: str) -> Optional[np.ndarray]:
 
 def check_embedding_status(db_path: str, course_filter: Optional[str] = None) -> Dict[str, Any]:
     """
-    Check how many files have embeddings vs need embeddings
-    
+    Check embedding status for both files and chunks
+
     Args:
         db_path: Path to SQLite database
         course_filter: Optional course name/code filter
-        
+
     Returns:
-        Dictionary with embedding statistics
+        Dictionary with comprehensive embedding statistics:
+            - total_files: Total number of files
+            - files_embedded: Files with file.vector populated
+            - files_pending: Files without file.vector
+            - total_chunks: Total number of chunks
+            - chunks_embedded: Chunks with chunks.vector populated
+            - chunks_pending: Chunks without chunks.vector
+            - files_completion_percentage: % of files with embeddings
+            - chunks_completion_percentage: % of chunks with embeddings
+            - total_embedded: Combined count (for backward compatibility)
     """
     conn = sqlite3.connect(db_path)
     try:
         params = []
         where_clause = ""
-        
+
         if course_filter:
             where_clause = "WHERE (course_name = ? OR course_code = ?)"
             params.extend([course_filter, course_filter])
-        
+
+        # === FILE-LEVEL EMBEDDINGS ===
         # Count total files
-        total_query = f"SELECT COUNT(*) FROM file {where_clause}"
-        total_files = conn.execute(total_query, params).fetchone()[0]
-        
-        # Count files with embeddings (check in chunks table)
+        total_files_query = f"SELECT COUNT(*) FROM file {where_clause}"
+        total_files = conn.execute(total_files_query, params).fetchone()[0]
+
+        # Count files with embeddings (file.vector is populated)
+        files_embedded_query = f"""
+            SELECT COUNT(*)
+            FROM file
+            {where_clause} {'AND' if where_clause else 'WHERE'} vector IS NOT NULL AND vector != ''
+        """
+        files_embedded = conn.execute(files_embedded_query, params if course_filter else []).fetchone()[0]
+        files_pending = total_files - files_embedded
+
+        # === CHUNK-LEVEL EMBEDDINGS ===
+        # Count total chunks
         if course_filter:
-            embedded_query = """
-                SELECT COUNT(DISTINCT f.uuid) 
+            total_chunks_query = """
+                SELECT COUNT(*) FROM chunks
+                WHERE (course_name = ? OR course_code = ?)
+            """
+            total_chunks = conn.execute(total_chunks_query, params).fetchone()[0]
+        else:
+            total_chunks_query = "SELECT COUNT(*) FROM chunks"
+            total_chunks = conn.execute(total_chunks_query).fetchone()[0]
+
+        # Count chunks with embeddings (chunks.vector is populated)
+        if course_filter:
+            chunks_embedded_query = """
+                SELECT COUNT(*) FROM chunks
+                WHERE (course_name = ? OR course_code = ?)
+                AND vector IS NOT NULL AND vector != ''
+            """
+            chunks_embedded = conn.execute(chunks_embedded_query, params).fetchone()[0]
+        else:
+            chunks_embedded_query = "SELECT COUNT(*) FROM chunks WHERE vector IS NOT NULL AND vector != ''"
+            chunks_embedded = conn.execute(chunks_embedded_query).fetchone()[0]
+
+        chunks_pending = total_chunks - chunks_embedded
+
+        # === FILES WITH CONTENT ===
+        # Count files that have at least one chunk (i.e., successfully converted)
+        if course_filter:
+            files_with_content_query = """
+                SELECT COUNT(DISTINCT f.uuid)
                 FROM file f
                 INNER JOIN chunks c ON f.uuid = c.file_uuid
                 WHERE (f.course_name = ? OR f.course_code = ?)
-                AND c.vector IS NOT NULL
             """
-            embedded_files = conn.execute(embedded_query, params).fetchone()[0]
+            files_with_content = conn.execute(files_with_content_query, params).fetchone()[0]
         else:
-            embedded_query = """
-                SELECT COUNT(DISTINCT f.uuid) 
+            files_with_content_query = """
+                SELECT COUNT(DISTINCT f.uuid)
                 FROM file f
                 INNER JOIN chunks c ON f.uuid = c.file_uuid
-                WHERE c.vector IS NOT NULL
             """
-            embedded_files = conn.execute(embedded_query).fetchone()[0]
-        
+            files_with_content = conn.execute(files_with_content_query).fetchone()[0]
+
         return {
+            # File-level statistics
             "total_files": total_files,
-            "embedded_files": embedded_files,
-            "pending_files": total_files - embedded_files,
-            "completion_percentage": (embedded_files / total_files * 100) if total_files > 0 else 0
+            "files_embedded": files_embedded,
+            "files_pending": files_pending,
+            "files_with_content": files_with_content,
+            "files_completion_percentage": (files_embedded / total_files * 100) if total_files > 0 else 0,
+
+            # Chunk-level statistics
+            "total_chunks": total_chunks,
+            "chunks_embedded": chunks_embedded,
+            "chunks_pending": chunks_pending,
+            "chunks_completion_percentage": (chunks_embedded / total_chunks * 100) if total_chunks > 0 else 0,
+
+            # Backward compatibility
+            "total_embedded": files_embedded,  # For backward compatibility
+            "embedded_files": files_embedded,  # Alias for clarity
+            "completion_percentage": (files_embedded / total_files * 100) if total_files > 0 else 0
         }
-        
+
     finally:
         conn.close()
 

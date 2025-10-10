@@ -265,6 +265,90 @@ def merge_course_databases_from_master_config(
     logging.info(f"Excluded courses: {excluded_courses}")
     logging.info(f"Included courses: {included_courses}")
 
+    # === PRE-MERGE VALIDATION: Check and fix missing embeddings ===
+    logging.info("")
+    logging.info("=" * 60)
+    logging.info("PRE-MERGE EMBEDDING VALIDATION")
+    logging.info("=" * 60)
+
+    from file_conversion_router.api import create_embeddings_for_course
+
+    courses_with_missing_embeddings = []
+    embedding_errors = []
+
+    for idx, db_path in enumerate(course_db_paths):
+        course_name = included_courses[idx] if idx < len(included_courses) else f"Course_{idx}"
+
+        try:
+            # Check embedding status for this course
+            embed_status = check_embedding_status(db_path)
+
+            files_pending = embed_status.get("files_pending", 0)
+            chunks_pending = embed_status.get("chunks_pending", 0)
+            total_files = embed_status.get("total_files", 0)
+            total_chunks = embed_status.get("total_chunks", 0)
+
+            logging.info(f"Checking {course_name}:")
+            logging.info(f"  Files: {total_files - files_pending}/{total_files} embedded")
+            logging.info(f"  Chunks: {total_chunks - chunks_pending}/{total_chunks} embedded")
+
+            # If embeddings are missing, try to generate them
+            if files_pending > 0 or chunks_pending > 0:
+                courses_with_missing_embeddings.append(course_name)
+                logging.warning(f"⚠️  {course_name} has missing embeddings!")
+                logging.warning(f"   Files pending: {files_pending}, Chunks pending: {chunks_pending}")
+
+                # Try to get course_code from database
+                import sqlite3
+                conn = sqlite3.connect(db_path)
+                try:
+                    # Get course_code from first file record
+                    row = conn.execute("SELECT course_code FROM file LIMIT 1").fetchone()
+                    if row:
+                        course_code = row[0]
+                        logging.info(f"   Attempting to generate missing embeddings for {course_code}...")
+
+                        # Generate missing embeddings
+                        create_embeddings_for_course(
+                            db_path=db_path,
+                            course_code=course_code,
+                            data_dir=None,  # Will auto-infer
+                            force_recompute=False  # Only generate missing ones
+                        )
+
+                        # Re-check status
+                        updated_status = check_embedding_status(db_path)
+                        files_now_pending = updated_status.get("files_pending", 0)
+                        chunks_now_pending = updated_status.get("chunks_pending", 0)
+
+                        if files_now_pending == 0 and chunks_now_pending == 0:
+                            logging.info(f"   ✅ Successfully generated all missing embeddings for {course_name}")
+                        else:
+                            logging.warning(f"   ⚠️  Some embeddings still missing: files={files_now_pending}, chunks={chunks_now_pending}")
+                    else:
+                        logging.warning(f"   Could not determine course_code for {course_name}")
+                        embedding_errors.append(course_name)
+                finally:
+                    conn.close()
+
+        except Exception as e:
+            logging.error(f"Error checking/fixing embeddings for {course_name}: {str(e)}")
+            embedding_errors.append(course_name)
+            continue
+
+    if courses_with_missing_embeddings:
+        logging.warning("")
+        logging.warning(f"⚠️  {len(courses_with_missing_embeddings)} course(s) had missing embeddings: {courses_with_missing_embeddings}")
+    else:
+        logging.info("")
+        logging.info("✅ All courses have complete embeddings")
+
+    if embedding_errors:
+        logging.error(f"❌ {len(embedding_errors)} course(s) had embedding errors: {embedding_errors}")
+
+    logging.info("=" * 60)
+    logging.info("")
+
     # Use merge_databases_by_list to perform the merge
     merge_stats = merge_databases_by_list(
         course_db_paths=course_db_paths,
