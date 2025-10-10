@@ -180,20 +180,50 @@ def _merge_single_course_db(
         file_uuid = file_row['uuid']
 
         # Insert file (no need to check for conflicts since we deleted all course data)
-        # Preserve created_at and update_time if they exist, otherwise use current timestamp
-        created_at = file_row['created_at'] if 'created_at' in file_row.keys() and file_row['created_at'] else None
-        update_time = file_row['update_time'] if 'update_time' in file_row.keys() and file_row['update_time'] else None
-        collective_conn.execute("""
-            INSERT OR REPLACE INTO file (uuid, file_hash, sections, relative_path,
-                                       course_code, course_name, file_name, extra_info, url,
-                                       created_at, update_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')), COALESCE(?, datetime('now', 'localtime')))
-        """, (
+        # Check which timestamp columns exist in collective database
+        collective_columns = [col[1] for col in collective_conn.execute("PRAGMA table_info(file)").fetchall()]
+
+        # Get source row keys (sqlite3.Row supports .keys() but not .get())
+        source_keys = file_row.keys()
+
+        # Prepare timestamp values based on available columns
+        ingested_time = None
+        update_time = None
+
+        if 'ingested_time' in collective_columns:
+            # Try to get ingested_time or created_at from source
+            if 'ingested_time' in source_keys:
+                ingested_time = file_row['ingested_time']
+            elif 'created_at' in source_keys:
+                ingested_time = file_row['created_at']
+
+        if 'update_time' in collective_columns:
+            if 'update_time' in source_keys:
+                update_time = file_row['update_time']
+
+        # Build INSERT statement dynamically based on collective schema
+        base_columns = "uuid, file_hash, sections, relative_path, course_code, course_name, file_name, extra_info, url"
+        base_values = "?, ?, ?, ?, ?, ?, ?, ?, ?"
+        base_params = [
             file_row['uuid'], file_row['file_hash'], file_row['sections'],
             file_row['relative_path'], file_row['course_code'], file_row['course_name'],
-            file_row['file_name'], file_row['extra_info'], file_row['url'],
-            created_at, update_time
-        ))
+            file_row['file_name'], file_row['extra_info'], file_row['url']
+        ]
+
+        if 'ingested_time' in collective_columns:
+            base_columns += ", ingested_time"
+            base_values += ", COALESCE(?, datetime('now', 'localtime'))"
+            base_params.append(ingested_time)
+
+        if 'update_time' in collective_columns:
+            base_columns += ", update_time"
+            base_values += ", COALESCE(?, datetime('now', 'localtime'))"
+            base_params.append(update_time)
+
+        collective_conn.execute(f"""
+            INSERT OR REPLACE INTO file ({base_columns})
+            VALUES ({base_values})
+        """, base_params)
 
         stats["files"] += 1
 

@@ -370,11 +370,11 @@ def check_embedding_status(db_path: str, course_filter: Optional[str] = None) ->
 
 if __name__ == "__main__":
     # Example usage
-    db_path = "/home/bot/bot/yk/YK_final/course_yaml/collective_metadata.db"
+    db_path = "/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db"
     data_dir = "/home/bot/bot/yk/YK_final/courses_out"
     
     # Check current status
-    status = check_embedding_status(db_path, course_filter="CS 61A")
+    status = check_embedding_status(db_path, course_filter=None)
     print("Current embedding status:", status)
     
     # Run embedding process

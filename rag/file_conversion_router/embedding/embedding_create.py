@@ -142,14 +142,18 @@ def embedding_create(db_path, embedding_name=None, ):
 
 if __name__ == "__main__":
     embedding_create(
-        "/home/bot/bot/yk/YK_final/courses_out/db/CS 61A_metadata.db",
+        "/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db",
         "CS 61A",
     )
     embedding_create(
-        "/home/bot/bot/yk/YK_final/courses_out/db/ROAR Academy_metadata.db",
+        "/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db",
         "ROAR Academy",
     )
     embedding_create(
-        "/home/bot/bot/yk/YK_final/courses_out/db/Berkeley_metadata.db",
+        "/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db",
         "Berkeley",
+    )
+    embedding_create(
+        "/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db",
+        "CS 294-137",
     )
