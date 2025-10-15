@@ -40,15 +40,17 @@ ALLOWED_TYPES = {
 }
 
 PROMPT_TEMPLATE = r"""
-You are an expert educational content organizer. Your job is to analyze the course syllabus and generate a TYPE-BASED organization structure that helps students find materials easily.
+You are an expert educational content organizer. Your job is to analyze the course syllabus and generate a TOPIC-BASED/MODULE-BASED organization structure where each module represents a lecture topic with all associated materials.
 
 ### Task
-Students navigate by MATERIAL TYPE first (Lectures, Homeworks, Labs), NOT by topic.
-- A student looking for "Lecture 5" goes to: Lectures/ → lecture_05/
-- A student looking for "Homework 3" goes to: Homeworks/ → hw03/
-- A student looking for "Lab 2" goes to: Labs/ → lab02/
+Students navigate by MODULE/TOPIC aligned with lecture sequence. Each module contains ALL materials for that lecture topic:
+- Module 01: Introduction to Programming
+  - Lecture slides (lecture_01.pdf)
+  - Readings (Chapter 1)
+  - Homework (hw01.pdf)
+  - Lab (lab01.pdf)
 
-Based on the syllabus, identify what types of materials exist and how they are numbered/organized.
+Based on the syllabus, identify the lecture sequence and group all related materials into logical modules.
 
 ### JSON Schema
 Generate a JSON object with this exact structure:
@@ -56,107 +58,129 @@ Generate a JSON object with this exact structure:
 {{
   "course_id": "{course_id}",
   "term": "{term}",
-  "structure_type": "type_based",
-  "units": [
+  "structure_type": "topic_based",
+  "modules": [
     {{
-      "unit_id": "lectures",
-      "title": "Lectures",
-      "aliases": ["lecture", "lec", "slides", "01", "02", "03", "..."],
-      "description": "All lecture slides and materials organized by lecture number",
-      "expected_types": ["lecture_slide", "code", "notes"]
+      "module_id": "module_01",
+      "lecture_number": "01",
+      "title": "Introduction to Programming",
+      "topics": ["Variables", "Functions", "Control Flow"],
+      "description": "Introduction to basic programming concepts including variables, functions, and control structures",
+      "week": 1,
+      "aliases": ["lecture 01", "lec01", "week 1", "module 1", "intro"],
+      "expected_materials": {{
+        "lecture_slides": true,
+        "readings": ["Chapter 1: Introduction"],
+        "assignments": ["HW01"],
+        "labs": ["Lab01"],
+        "projects": [],
+        "discussions": [],
+        "other": []
+      }}
     }},
     {{
-      "unit_id": "homeworks",
-      "title": "Homeworks",
-      "aliases": ["hw", "homework", "assignment", "hw01", "hw02", "..."],
-      "description": "All homework assignments organized by number",
-      "expected_types": ["assignment", "code", "notes"]
-    }},
-    {{
-      "unit_id": "labs",
-      "title": "Labs",
-      "aliases": ["lab", "lab01", "lab02", "..."],
-      "description": "All lab exercises organized by number",
-      "expected_types": ["lab", "code", "notes"]
+      "module_id": "module_02",
+      "lecture_number": "02",
+      "title": "Data Structures",
+      "topics": ["Lists", "Dictionaries", "Tuples"],
+      "description": "Working with fundamental data structures in Python",
+      "week": 2,
+      "aliases": ["lecture 02", "lec02", "week 2", "module 2", "data structures"],
+      "expected_materials": {{
+        "lecture_slides": true,
+        "readings": ["Chapter 2: Data Structures"],
+        "assignments": ["HW02"],
+        "labs": ["Lab02"],
+        "projects": [],
+        "discussions": ["Discussion 02"],
+        "other": []
+      }}
     }}
   ]
 }}
 
-### Organization Rules - TYPE-BASED STRUCTURE
-Create units by MATERIAL TYPE based on what you find in the syllabus:
+### Organization Rules - TOPIC-BASED/MODULE-BASED STRUCTURE
 
-**Common Unit Types:**
-- **Lectures**: All lecture slides/recordings (numbered: 01, 02, 03, etc.)
-- **Homeworks**: Homework assignments (hw01, hw02, hw03, etc.)
-- **Labs**: Lab exercises (lab01, lab02, etc.)
-- **Discussions**: Discussion worksheets (disc01, disc02, etc.)
-- **Projects**: Major projects (may have names like "hog", "cats", or just project1, project2)
-- **Exams**: Exams and study materials (midterm, final, practice exams)
-- **Readings**: Course readings, textbooks, papers
-- **Resources**: Syllabus, course policies, general notes
+Each module should align with a lecture and contain all associated course materials for that topic.
 
-**For each unit:**
-- **unit_id**: lowercase identifier (e.g., "lectures", "homeworks", "labs")
-- **title**: Student-friendly name (e.g., "Lectures", "Homeworks")
-- **aliases**: Include type keywords + number patterns from syllabus
-  - Type keywords: "lecture", "hw", "homework", "lab", "disc", "project", "exam"
-  - Number patterns: extract from syllabus (e.g., "01", "02", "hw01", "lab02")
-  - Project names: if mentioned (e.g., "hog", "cats", "ants")
-- **description**: Brief explanation of what materials are in this unit
-- **expected_types**: CRITICAL - Be precise and specific. Follow the mapping below:
-
-### Expected Types Mapping (FOLLOW STRICTLY)
-Choose expected_types based ONLY on what materials are PRIMARY to that unit type:
-
-**lectures** → ["lecture_slide"] OR ["lecture_slide", "media"] if recordings mentioned
-  - Add "code" only if lecture demos/notebooks explicitly mentioned
-  - Do NOT add "notes" (notes are separate supplementary materials)
-
-**homeworks** → ["assignment"]
-  - Add "code" only if starter code/autograder mentioned
-  - Do NOT add "notes" or "lecture_slide"
-
-**labs** → ["lab"]
-  - Add "code" only if lab starter code mentioned
-  - Do NOT add "notes" or "assignment"
-
-**discussions** → ["notes"]
-  - "notes" means discussion worksheets/handouts
-  - Do NOT add "assignment" or "lecture_slide"
-
-**projects** → ["project"]
-  - Add "code" if starter code/frameworks mentioned
-  - Do NOT add "assignment" or "lab"
-
-**exams** → ["exam"]
-  - ONLY "exam" - this includes practice exams, past exams, exam PDFs
-  - Do NOT add "notes" (study guides are separate)
-  - Do NOT add "reading" or other types
-
-**readings** → ["reading"]
-  - Textbook chapters, papers, articles, book PDFs
-  - Do NOT add "lecture_slide" or "notes"
-
-**resources** → ["notes"]
-  - Syllabus, policies, general reference materials
-  - Can add "reading" if supplementary materials mentioned
-
-**Rule**: Each unit should have 1-3 expected_types maximum. Be conservative and specific.
+**For each module:**
+- **module_id**: Unique identifier in format "module_XX" (e.g., "module_01", "module_02")
+- **lecture_number**: The lecture number this module corresponds to (e.g., "01", "02", "03")
+- **title**: Descriptive title of the lecture topic (e.g., "Introduction to Programming")
+- **topics**: List of 2-5 specific topics covered in this module
+- **description**: 1-2 sentence description of what this module covers
+- **week**: Week number in the course (integer, e.g., 1, 2, 3)
+- **aliases**: Alternative names/identifiers for this module
+  - Include: lecture number variations ("lecture 01", "lec01", "L01")
+  - Week identifiers ("week 1", "week 01")
+  - Module identifiers ("module 1", "mod 1")
+  - Topic keywords from the title (lowercase, e.g., "intro", "recursion")
+- **expected_materials**: Dictionary specifying what materials belong to this module
+  - **lecture_slides**: boolean (true if lecture exists)
+  - **readings**: List of reading titles/chapters (empty list [] if none)
+  - **assignments**: List of assignment names (e.g., ["HW01", "HW02"])
+  - **labs**: List of lab names (e.g., ["Lab01"])
+  - **projects**: List of project names (e.g., ["Project 1: Hog"])
+  - **discussions**: List of discussion names (e.g., ["Discussion 01"])
+  - **other**: Any other materials (e.g., ["Study Guide", "Practice Exam"])
 
 ### Extraction Guidelines
-1. **Read the syllabus carefully** to identify all material types mentioned
-2. **Extract numbering patterns** (e.g., if syllabus shows "HW 1-10", add hw01-hw10 to aliases)
-3. **Look for project names** (e.g., "Project: Hog Game" → add "hog" to aliases)
-4. **Identify exam types** (midterm, final, practice exams mentioned?)
-5. **Check for readings** (textbook chapters, papers, articles?)
+
+1. **Identify Lecture Sequence**: Look for lecture numbers, dates, or weekly schedule
+2. **Extract Topics**: Identify the main topics/concepts for each lecture
+3. **Map Materials to Lectures**: Associate each assignment, lab, reading with the appropriate lecture/week
+4. **Group by Module**: Create one module per lecture, containing all related materials
+5. **Handle Special Cases**:
+   - If multiple lectures cover one topic, create separate modules for each lecture
+   - If one lecture covers multiple distinct topics, list all topics
+   - Projects may span multiple modules - list them in the primary module
+   - Exams and reviews get their own modules (e.g., "module_midterm", "module_final")
+
+### Mapping Strategy
+
+**From Syllabus to Modules:**
+- Week 1, Lecture 1: "Introduction" → Module 01
+  - Materials: Lecture 1 slides, HW01, Lab01, Reading Chapter 1
+- Week 2, Lecture 2: "Functions" → Module 02
+  - Materials: Lecture 2 slides, HW02, Lab02, Reading Chapter 2
+- Week 5: "Midterm" → module_midterm
+  - Materials: Midterm exam, study guide, practice problems
+
+**Reading Assignment Extraction:**
+- "Read Chapter 1" → ["Chapter 1"]
+- "SICP 1.1-1.3" → ["SICP Sections 1.1-1.3"]
+- "Paper: MapReduce" → ["Paper: MapReduce"]
+
+**Assignment Pattern Recognition:**
+- "HW 1 due Week 2" → Assign to Module 02
+- "Lab 3 covers Lecture 3 material" → Assign to Module 03
+- "Project 1 (Weeks 3-5)" → Assign to Module 03 (start week)
 
 ### Output Requirements
 - Output **only valid JSON** with no extra commentary
 - Keys must match schema exactly
-- Use lowercase for unit_id
-- Include 3-8 units (only types that make sense for this course)
-- Aliases should be comprehensive but concise (<40 characters each)
-- Valid expected_types: ["lecture_slide","reading","assignment","lab","project","notes","exam","code","media"]
+- Include 8-15 modules typically (one per lecture, plus exams/reviews)
+- Modules should be in chronological order by lecture number
+- Use consistent numbering (module_01, module_02, not module_1, module_2)
+- Aliases should be comprehensive (<40 characters each)
+- For expected_materials, use empty lists [] when materials don't exist, not null
+
+### Special Module Types
+
+**Regular Lecture Module**: Standard lecture with materials
+**Midterm Module**:
+- module_id: "module_midterm"
+- lecture_number: "midterm"
+- title: "Midterm Exam"
+- expected_materials: {{"lecture_slides": false, "readings": [], "assignments": [], "labs": [], "projects": [], "discussions": [], "other": ["Midterm Exam", "Study Guide"]}}
+
+**Final Module**:
+- module_id: "module_final"
+- lecture_number: "final"
+- title: "Final Exam"
+
+**Review Session**:
+- Treat as regular module with descriptive title
 
 ### Course Metadata
 course_id = "{course_id}"
@@ -256,40 +280,77 @@ def extract_json(text: str) -> Dict[str, Any]:
 def normalize_json(obj: Dict[str, Any], course_id: str, term: str) -> Dict[str, Any]:
     obj["course_id"] = course_id
     obj["term"] = term
-    obj["structure_type"] = "type_based"
+    obj["structure_type"] = "topic_based"
 
-    units = obj.get("units") or []
-    if not isinstance(units, list):
-        units = []
-    if len(units) < 3:
-        print("[warn] fewer than 3 units; consider improving the prompt", file=sys.stderr)
-    if len(units) > 8:
-        print(f"[warn] more than 8 units ({len(units)}), truncating to 8", file=sys.stderr)
-        units = units[:8]
+    modules = obj.get("modules") or []
+    if not isinstance(modules, list):
+        modules = []
+    if len(modules) < 5:
+        print("[warn] fewer than 5 modules; consider improving the prompt", file=sys.stderr)
+    if len(modules) > 20:
+        print(f"[warn] more than 20 modules ({len(modules)}), truncating to 20", file=sys.stderr)
+        modules = modules[:20]
 
     normalized = []
-    for i, u in enumerate(units, 1):
+    for i, m in enumerate(modules, 1):
         n = {}
-        # Keep original unit_id (e.g., "lectures", "homeworks") instead of renumbering
-        unit_id = u.get("unit_id", "").strip().lower()
-        if not unit_id:
-            unit_id = f"unit_{i}"
-        n["unit_id"] = unit_id
 
-        n["title"] = (u.get("title") or "Untitled").strip()
-        aliases = [a.strip() for a in u.get("aliases", []) if isinstance(a, str) and len(a.strip()) < 40]
+        # Module ID (e.g., "module_01", "module_midterm")
+        module_id = m.get("module_id", "").strip().lower()
+        if not module_id:
+            module_id = f"module_{i:02d}"
+        n["module_id"] = module_id
+
+        # Lecture number
+        lecture_num = m.get("lecture_number", "").strip()
+        if not lecture_num:
+            lecture_num = f"{i:02d}"
+        n["lecture_number"] = lecture_num
+
+        # Title and description
+        n["title"] = (m.get("title") or "Untitled Module").strip()
+        n["description"] = (m.get("description") or "").strip()
+
+        # Topics (list of strings)
+        topics = m.get("topics", [])
+        if not isinstance(topics, list):
+            topics = []
+        n["topics"] = [t.strip() for t in topics if isinstance(t, str) and t.strip()][:10]
+
+        # Week number
+        week = m.get("week")
+        if isinstance(week, int):
+            n["week"] = week
+        elif isinstance(week, str) and week.isdigit():
+            n["week"] = int(week)
+        else:
+            n["week"] = i
+
+        # Aliases
+        aliases = [a.strip() for a in m.get("aliases", []) if isinstance(a, str) and len(a.strip()) < 40]
         seen = set()
         aliases = [a for a in aliases if not (a.lower() in seen or seen.add(a.lower()))]
-        n["aliases"] = aliases[:15]
-        desc = u.get("description") or ""
-        n["description"] = desc.strip()
-        et = [t for t in u.get("expected_types", []) if t in ALLOWED_TYPES]
-        if not et:
-            et = ["lecture_slide", "notes"]
-        n["expected_types"] = et[:6]
+        n["aliases"] = aliases[:20]
+
+        # Expected materials
+        expected_materials = m.get("expected_materials", {})
+        if not isinstance(expected_materials, dict):
+            expected_materials = {}
+
+        normalized_materials = {
+            "lecture_slides": bool(expected_materials.get("lecture_slides", True)),
+            "readings": [r.strip() for r in expected_materials.get("readings", []) if isinstance(r, str)][:10],
+            "assignments": [a.strip() for a in expected_materials.get("assignments", []) if isinstance(a, str)][:10],
+            "labs": [l.strip() for l in expected_materials.get("labs", []) if isinstance(l, str)][:10],
+            "projects": [p.strip() for p in expected_materials.get("projects", []) if isinstance(p, str)][:10],
+            "discussions": [d.strip() for d in expected_materials.get("discussions", []) if isinstance(d, str)][:10],
+            "other": [o.strip() for o in expected_materials.get("other", []) if isinstance(o, str)][:10]
+        }
+        n["expected_materials"] = normalized_materials
+
         normalized.append(n)
 
-    obj["units"] = normalized
+    obj["modules"] = normalized
     return obj
 
 def call_openai(prompt: str, model: str, api_key: str | None = None) -> str:
@@ -336,7 +397,7 @@ def validate_input_file(file_path: str) -> str:
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Generate type-based syllabus.json from course syllabus file. Organizes materials by type (Lectures, Homeworks, Labs) rather than topics.",
+        description="Generate topic-based syllabus.json from course syllabus file. Organizes materials by lecture topics/modules, where each module contains all associated materials.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Example usage:
@@ -347,11 +408,27 @@ Output structure:
   {
     "course_id": "CS61A",
     "term": "2025FA",
-    "structure_type": "type_based",
-    "units": [
-      {"unit_id": "lectures", "title": "Lectures", "aliases": ["lecture", "lec", "01", "02", ...], ...},
-      {"unit_id": "homeworks", "title": "Homeworks", "aliases": ["hw", "homework", "hw01", ...], ...},
-      {"unit_id": "labs", "title": "Labs", "aliases": ["lab", "lab01", "lab02", ...], ...}
+    "structure_type": "topic_based",
+    "modules": [
+      {
+        "module_id": "module_01",
+        "lecture_number": "01",
+        "title": "Introduction to Programming",
+        "topics": ["Variables", "Functions", "Control Flow"],
+        "description": "Introduction to basic programming concepts",
+        "week": 1,
+        "aliases": ["lecture 01", "lec01", "week 1", "module 1", "intro"],
+        "expected_materials": {
+          "lecture_slides": true,
+          "readings": ["Chapter 1: Introduction"],
+          "assignments": ["HW01"],
+          "labs": ["Lab01"],
+          "projects": [],
+          "discussions": [],
+          "other": []
+        }
+      },
+      ...
     ]
   }
         """
@@ -392,9 +469,10 @@ Output structure:
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(obj, f, ensure_ascii=False, indent=2)
 
-        print(f"✓ Successfully wrote {args.out} with {len(obj.get('units', []))} material types.")
-        print(f"  Structure type: type_based")
-        print(f"  Material types: {', '.join([u.get('unit_id', '') for u in obj.get('units', [])])}")
+        print(f"✓ Successfully wrote {args.out} with {len(obj.get('modules', []))} modules.")
+        print(f"  Structure type: topic_based")
+        print(f"  Modules: {', '.join([m.get('module_id', '') for m in obj.get('modules', [])])}")
+        print(f"  Lectures covered: {', '.join([m.get('lecture_number', '') for m in obj.get('modules', [])])}")
 
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
