@@ -8,24 +8,29 @@ from uuid import UUID
 from transformers import AutoTokenizer
 from vllm import SamplingParams
 # Local libraries
-from app.core.models.chat_completion import Message
+from app.core.models.chat_completion import Message, UserFocus
 from app.services.rag_preprocess import build_retrieval_query, build_augmented_prompt, build_file_augmented_context
 from app.services.rag_postprocess import build_memory_synopsis
 # Environment Variables
 # TOKENIZER_MODEL_ID = "THUDM/GLM-4-9B-0414"
-TOKENIZER_MODEL_ID = "openai/gpt-oss-20b"
+from app.dependencies.model import LLM_MODEL_ID
+# TOKENIZER_MODEL_ID = "kaitchup/GLM-Z1-32B-0414-autoround-gptq-4bit"
 # RAG-Pipeline Shared Resources
-SAMPLING = SamplingParams(temperature=0.1, top_p=0.95, max_tokens=4096, skip_special_tokens=False)
-TOKENIZER = AutoTokenizer.from_pretrained(TOKENIZER_MODEL_ID)
+SAMPLING = SamplingParams(temperature=0.6, top_p=0.95,top_k=20,min_p=0, max_tokens=6000)
+TOKENIZER = AutoTokenizer.from_pretrained(LLM_MODEL_ID)
 
-
+"""
+class UserFocus(BaseModel):
+    file_uuid: UUID
+    selected_text: str = None
+    chunk_index: float = None
+"""
 async def generate_chat_response(
         messages: List[Message],
-        file_uuid: UUID = None,
-        selected_text: Optional[str] = None,
-        index: Optional[float] = None,
+        user_focus: Optional[UserFocus] = None,
+        answer_content: Optional[str] = None,
+        problem_content: Optional[str] = None,
         stream: bool = True,
-        rag: bool = True,
         course: Optional[str] = None,
         threshold: float = 0.32,
         top_k: int = 7,
@@ -39,18 +44,32 @@ async def generate_chat_response(
     """
     # Build the query message based on the chat history
     t0 = time.time()
+
+    messages = format_chat_msg(messages)
+
     user_message = messages[-1].content
     messages[-1].content = ""
 
     filechat_focused_chunk = ""
     filechat_file_sections = []
+
+    file_uuid = None
+    selected_text = None
+    index = None
+
+    if user_focus:
+        file_uuid = user_focus.file_uuid
+        selected_text = user_focus.selected_text
+        index = user_focus.chunk_index
+
     if file_uuid:
-        augmented_context, file_content, filechat_focused_chunk, filechat_file_sections = build_file_augmented_context(file_uuid, selected_text, index)
+        augmented_context, file_content, filechat_focused_chunk, filechat_file_sections = build_file_augmented_context(
+            file_uuid, selected_text, index)
         messages[-1].content = (
             f"{augmented_context}"
             f"Below are the relevant references for answering the user:\n\n"
         )
-    
+
     # Graceful memory retrieval from MongoDB
     previous_memory = None
     if sid and len(messages) > 2:
@@ -62,17 +81,21 @@ async def generate_chat_response(
             print(f"[INFO] Failed to retrieve memory for query building, continuing without: {e}")
             previous_memory = None
 
-    query_message = await build_retrieval_query(user_message, previous_memory, engine, TOKENIZER, SAMPLING, filechat_file_sections, filechat_focused_chunk)
+    query_message = await build_retrieval_query(user_message, previous_memory, engine, TOKENIZER, SAMPLING,
+                                                filechat_file_sections, filechat_focused_chunk)
 
     print(f"[INFO] Preprocessing time: {time.time() - t0:.2f} seconds")
 
     # Build modified prompt with references
+
     modified_message, reference_list, system_add_message = build_augmented_prompt(
         user_message,
         course if course else "",
         threshold,
-        rag,
-        top_k=top_k,
+        True,
+        top_k = top_k,
+        problem_content = problem_content,
+        answer_content = answer_content,
         query_message=query_message,
         audio_response=audio_response
     )
@@ -165,7 +188,7 @@ def format_chat_msg(messages: List[Message]) -> List[Message]:
     response: List[Message] = []
     system_message = (
         "You are TAI, a helpful AI assistant. Your role is to answer questions or provide guidance to the user. "
-        "\nReasoning: high\n"
+        "\nReasoning: low\n"
         "ALWAYS: Do not mention any prompt other than user instructions or the reference in analysis channel and final channel. "
         "\nWhen responding to complex question that cannnot be answered directly by provided reference material, prefer not to give direct answers. Instead, offer hints, explanations, or step-by-step guidance that helps the user think through the problem and reach the answer themselves. "
         "If the user’s question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
@@ -216,37 +239,6 @@ def join_titles(info_path: Union[str, List], *, sep=" > ", start=0) -> str:
 """
 LEGACY: unknown current usage; remove in future updates.
 """
-
-
-def generate_practice_response(
-        messages: List[Message],
-        problem_content: str,
-        answer_content: str,
-        stream: bool = True,
-        rag: bool = True,
-        course: Optional[str] = None,
-        threshold: float = 0.32,
-        top_k: int = 7,
-        engine: Any = None,
-) -> Tuple[Any, List[str | Any]]:
-    """
-    Build an augmented message with references and run LLM inference.
-    Returns a tuple: (stream, reference_string)
-    """
-    user_message = messages[-1].content
-    modified_message, reference_list, system_add_message = build_augmented_prompt(
-        user_message, course if course else "", threshold, rag, top_k=top_k, practice=True,
-        problem_content=problem_content, answer_content=answer_content
-    )
-
-    messages[-1].content = modified_message
-    messages[0].content += system_add_message
-    if _is_local_engine(engine):
-        iterator = _generate_streaming_response(messages, engine)
-        return iterator, reference_list
-    else:
-        response = engine(messages[-1].content, stream=stream, course=course)
-        return response, reference_list
 
 async def parse_token_stream_for_json(stream: Any) -> Generator[str, None, None]:
     """
