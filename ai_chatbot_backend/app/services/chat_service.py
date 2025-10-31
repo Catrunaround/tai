@@ -1,5 +1,5 @@
 from app.core.models.chat_completion import *
-from typing import Union, AsyncIterator, List, Any, Dict
+from typing import AsyncIterator, List, Any, Dict
 import re
 import os
 import base64
@@ -7,9 +7,9 @@ import io
 import soundfile as sf
 import numpy as np
 from openai import OpenAI
+from app.services.rag_postprocess import extract_channels
 
-
-def extract_channels(text: str) -> dict:
+def extract_channels_oss(text: str) -> dict:
     # 1) Remove the special marker wherever it appears
     cleaned = re.sub(r"<\|start\|\>assistant\s*", "", text)
 
@@ -59,6 +59,7 @@ async def chat_stream_parser(
     async for output in stream:
         text = output.outputs[0].text
         channels= extract_channels(text)
+        # print(channels)
         if not channels:
             continue
         chunks= {c: channels[c][len(previous_channels.get(c,"")):] for c in channels if channels[c] != previous_channels.get(c,"")}
@@ -75,7 +76,7 @@ async def chat_stream_parser(
                 continue_flag = True
                 break
             yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk)); text_seq += 1
-            print(chunk, end="_")
+            print(chunk, end="")
         if continue_flag:
             continue
         previous_channels = channels
@@ -235,7 +236,7 @@ async def audio_generator(messages: List[Dict], stream: bool = True, speaker_nam
     """
     Parse the streaming response from the audio model and yield deltas.
     """
-    data_dir = '/home/bot/localgpt/tai/ai_chatbot_backend/voice_prompts'
+    data_dir = '/home/tai25/bot/tai/ai_chatbot_backend/voice_prompts'
     
     # Select voice prompt based on course_code
     if speaker_name == "Professor John DeNero":

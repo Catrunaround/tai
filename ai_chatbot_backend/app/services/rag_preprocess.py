@@ -73,7 +73,6 @@ def build_augmented_prompt(
         top_k: int = 7,
         query_message: str = "",
         reference_list: List[Dict] = None,
-        practice: bool = False,
         problem_content: Optional[str] = None,
         answer_content: Optional[str] = None,
         audio_response: bool = False
@@ -85,7 +84,7 @@ def build_augmented_prompt(
       - reference_list: list of reference URLs for JSON output.
     """
     # Practice mode has its own message format
-    if practice:
+    if answer_content and problem_content:
         user_message = (
             f"Course problem:\n{problem_content}\n"
             f"Answer attempted by user:\n{answer_content}\n"
@@ -132,7 +131,7 @@ def build_augmented_prompt(
             f"No references at the end."
         )
         reference_style = (
-            f"\nALWAYS: Refer to specific reference numbers inline using [Reference: n] style!!! Do not use other style like refs, 【】, Reference: [n], > *Reference: n*  or (reference n)!!!"
+            f"\nALWAYS: Refer to specific reference numbers inline using [Reference: a,b] style!!! Do not use other style like refs, 【】, Reference: [n], > *Reference: n*, [Reference: a-b]  or (reference n)!!!"
             f"\nDo not list references at the end. "
         )
     else:
@@ -185,7 +184,7 @@ def build_augmented_prompt(
             f"{insert_document}\n---\n"
         )
     # Append user instruction to the modified message
-    if not practice:
+    if not (answer_content and problem_content):
         modified_message += f"Instruction: {user_message}"
     else:
         modified_message += user_message
@@ -232,53 +231,3 @@ def build_file_augmented_context(
         augmented_context += f"The user has selected the following text in the file:\n\n{selected_text}\n\n"
 
     return augmented_context, file_content, focused_chunk, sections
-
-    # The following code is commented out because file chat no longer needs separate reference retrieval for file-related context.
-
-    # if not rag:
-    #     return augmented_context, []
-
-    # # Get reference documents based on the selected text.
-    # (
-    #     top_chunk_uuids, top_docs, top_urls, similarity_scores, top_files, top_refs, top_titles,
-    #     top_file_uuids, top_chunk_idxs
-    # ), _ = get_reference_documents(selected_text, course, top_k=top_k // 2) if selected_text else ([], [], [], [], [], [], [],[], []), ""
-
-    # # Get reference documents based on the entire document.
-    # (
-    #     top_chunk_uuids_doc, top_docs_doc, top_urls_doc, similarity_scores_doc, top_files_doc, top_refs_doc, top_titles_doc,
-    #     top_file_uuids_doc, top_chunk_idxs_doc
-    # ) = get_file_related_documents(file_uuid, course, top_k=top_k // 2 if selected_text else top_k)
-
-    # # Combine results from selected text and entire document
-    # top_ids_combined = top_chunk_uuids + top_chunk_uuids_doc
-    # top_docs_combined = top_docs + top_docs_doc
-    # top_urls_combined = top_urls + top_urls_doc
-    # similarity_scores_combined = similarity_scores + similarity_scores_doc
-    # top_files_combined = top_files + top_files_doc
-    # top_refs_combined = top_refs + top_refs_doc
-    # top_titles_combined = top_titles + top_titles_doc
-    # top_file_uuids_combined = top_file_uuids + top_file_uuids_doc
-    # top_chunk_idxs_combined = top_chunk_idxs + top_chunk_idxs_doc
-
-    # insert_document = ""
-    # reference_list = reference_list or []
-    # n = len(reference_list)
-    # for i in range(len(top_docs_combined)):
-    #     if similarity_scores_combined[i] > threshold:
-    #         n += 1
-    #         file_path = top_files_combined[i]
-    #         file_uuid = top_file_uuids_combined[i]
-    #         chunk_index = top_chunk_idxs_combined[i]
-    #         topic_path = top_refs_combined[i]
-    #         url = top_urls_combined[i] if top_urls_combined[i] else ""
-    #         insert_document += (
-    #             f'Reference Number: {n}\n'
-    #             f"Directory Path to reference file to tell what file is about: {file_path}\n"
-    #             f"Topic Path of chunk in file to tell the topic of chunk: {topic_path}\n"
-    #             f'Document: {top_docs_combined[i]}\n\n'
-    #         )
-    #         reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
-
-    # augmented_context += insert_document + "---\n"
-    # return augmented_context, reference_list
