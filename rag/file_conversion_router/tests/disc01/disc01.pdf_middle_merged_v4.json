@@ -1,0 +1,4667 @@
+{
+  "pdf_info": [
+    {
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            119,
+            151,
+            142
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                116,
+                154,
+                146
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    116,
+                    154,
+                    146
+                  ],
+                  "score": 1.0,
+                  "content": "While and If",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            149,
+            560,
+            219
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                150,
+                561,
+                222
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    150,
+                    279,
+                    162
+                  ],
+                  "score": 1.0,
+                  "content": "Learning to use if and while is an essential skill.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    150,
+                    560,
+                    177
+                  ],
+                  "score": 1.0,
+                  "content": "During this discussion, focus on what we’ve studied in the first three lectures: if, while, assignment ( = ) , comparison ( < , > , = = , \\ \\ldots ) , and arithmetic.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    163,
+                    561,
+                    191
+                  ],
+                  "score": 1.0,
+                  "content": "Please don’t use features of Python that we haven’t discussed in class yet, such as for, range, and lists.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    178,
+                    560,
+                    222
+                  ],
+                  "score": 1.0,
+                  "content": "We’ll have plenty of time for those later in the course, but now is the time to practice the use of if (textbook section 1.5.4) and while (textbook section 1.5.5).",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            }
+          ],
+          "index": 3
+        },
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            235,
+            102,
+            248
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                235,
+                103,
+                250
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    235,
+                    103,
+                    250
+                  ],
+                  "score": 1.0,
+                  "content": "Q1: Race",
+                  "type": "text"
+                }
+              ],
+              "index": 6
+            }
+          ],
+          "index": 6
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            256,
+            443,
+            268
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                255,
+                444,
+                269
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    255,
+                    444,
+                    269
+                  ],
+                  "score": 1.0,
+                  "content": "The race function below sometimes returns the wrong value and sometimes runs forever.",
+                  "type": "text"
+                }
+              ],
+              "index": 7
+            }
+          ],
+          "index": 7
+        },
+        {
+          "type": "text",
+          "bbox": [
+            49,
+            282,
+            527,
+            546
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                285,
+                463,
+                542
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    285,
+                    459,
+                    327
+                  ],
+                  "score": 1.0,
+                  "content": "def race(x, y): \"\"\"The tortoise always walks x feet per minute, while the hare repeatedly runs y feet per minute for 5 minutes, then rests for 5 minutes.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    69,
+                    313,
+                    463,
+                    542
+                  ],
+                  "score": 1.0,
+                  "content": "Return how many minutes pass until the tortoise first catches up to the hare. > > > race(5, 7) # After 7 minutes, both have gone 35 steps 7 > > > race(2, 4) # After 10 minutes, both have gone 20 steps 10 \"\"\" assert \\texttt { y } > \\texttt { x } and \\texttt { y } < = \\texttt { 2 } * \\texttt { x } , 'the hare must be fast but not too fast' tortoise, hare, minutes \\qquad = \\ 0 , 0, 0 while minutes \\scriptstyle = = 0 or tortoise - hare: tortoise + = \\texttt { x } if minutes \\% 1 0 < 5 : hare += y minutes += 1 return minutes",
+                  "type": "text"
+                }
+              ],
+              "index": 8
+            }
+          ],
+          "index": 16
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            567,
+            558,
+            629
+          ],
+          "lines": [
+            {
+              "bbox": [
+                50,
+                565,
+                559,
+                630
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    50,
+                    565,
+                    559,
+                    630
+                  ],
+                  "score": 1.0,
+                  "content": "Find positive integers \\mathtt { x } and \\mathtt { y } (with \\mathtt { y } larger than \\mathbf { x } but not larger than 2 \\texttt { * * } ) for which either: - race(x, y) returns the wrong value or - \\mathtt { r a c e ( x , \\ y ) } runs forever You just need to find one pair of numbers that satisfies either of these conditions to finish the question, but if you want to think of more you can.",
+                  "type": "text"
+                }
+              ],
+              "index": 25
+            }
+          ],
+          "index": 25.5
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            636,
+            555,
+            664
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                637,
+                557,
+                663
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    637,
+                    557,
+                    663
+                  ],
+                  "score": 1.0,
+                  "content": "Notes: - \\texttt { x } + = \\texttt { 1 } is the same as \\textbf { z } = \\textbf { x } + \\textbf { 1 } when \\mathbf { x } is assigned to a number. - 0 is a false value and all other numbers are true values.",
+                  "type": "text"
+                }
+              ],
+              "index": 29
+            }
+          ],
+          "index": 29.5
+        }
+      ],
+      "page_idx": 0,
+      "page_size": [
+        612,
+        792
+      ],
+      "discarded_blocks": [
+        {
+          "type": "discarded",
+          "bbox": [
+            52,
+            44,
+            560,
+            110
+          ],
+          "lines": [
+            {
+              "bbox": [
+                48,
+                48,
+                561,
+                78
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    48,
+                    48,
+                    115,
+                    77
+                  ],
+                  "score": 1.0,
+                  "content": "CS 61A",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    412,
+                    50,
+                    561,
+                    78
+                  ],
+                  "score": 1.0,
+                  "content": "Functions, Control",
+                  "type": "text"
+                }
+              ]
+            },
+            {
+              "bbox": [
+                48,
+                77,
+                560,
+                104
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    48,
+                    77,
+                    161,
+                    104
+                  ],
+                  "score": 1.0,
+                  "content": "Summer 2025",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    409,
+                    82,
+                    560,
+                    103
+                  ],
+                  "score": 1.0,
+                  "content": "Discussion 1: June 26, 2025",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "para_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            119,
+            151,
+            142
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                116,
+                154,
+                146
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    116,
+                    154,
+                    146
+                  ],
+                  "score": 1.0,
+                  "content": "While and If",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            149,
+            560,
+            219
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                150,
+                560,
+                162
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    150,
+                    560,
+                    162
+                  ],
+                  "score": 1.0,
+                  "content": "Learning to use if and while is an essential skill. During this discussion, focus on what we’ve studied in the first",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            },
+            {
+              "bbox": [
+                51,
+                163,
+                561,
+                177
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    163,
+                    223,
+                    177
+                  ],
+                  "score": 1.0,
+                  "content": "three lectures: if, while, assignment",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    224,
+                    165,
+                    237,
+                    177
+                  ],
+                  "score": 0.72,
+                  "content": "( = )",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    237,
+                    163,
+                    298,
+                    177
+                  ],
+                  "score": 1.0,
+                  "content": ", comparison",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    298,
+                    165,
+                    354,
+                    177
+                  ],
+                  "score": 0.8,
+                  "content": "( < , > , = = , \\ \\ldots )",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    354,
+                    163,
+                    561,
+                    177
+                  ],
+                  "score": 1.0,
+                  "content": ", and arithmetic. Please don’t use features of",
+                  "type": "text"
+                }
+              ],
+              "index": 2
+            },
+            {
+              "bbox": [
+                51,
+                178,
+                560,
+                191
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    178,
+                    560,
+                    191
+                  ],
+                  "score": 1.0,
+                  "content": "Python that we haven’t discussed in class yet, such as for, range, and lists. We’ll have plenty of time for those later",
+                  "type": "text"
+                }
+              ],
+              "index": 3
+            },
+            {
+              "bbox": [
+                51,
+                192,
+                560,
+                206
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    192,
+                    560,
+                    206
+                  ],
+                  "score": 1.0,
+                  "content": "in the course, but now is the time to practice the use of if (textbook section 1.5.4) and while (textbook section",
+                  "type": "text"
+                }
+              ],
+              "index": 4
+            },
+            {
+              "bbox": [
+                51,
+                205,
+                83,
+                222
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    205,
+                    83,
+                    222
+                  ],
+                  "score": 1.0,
+                  "content": "1.5.5).",
+                  "type": "text"
+                }
+              ],
+              "index": 5
+            }
+          ],
+          "index": 3,
+          "bbox_fs": [
+            51,
+            150,
+            561,
+            222
+          ]
+        },
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            235,
+            102,
+            248
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                235,
+                103,
+                250
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    235,
+                    103,
+                    250
+                  ],
+                  "score": 1.0,
+                  "content": "Q1: Race",
+                  "type": "text"
+                }
+              ],
+              "index": 6
+            }
+          ],
+          "index": 6
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            256,
+            443,
+            268
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                255,
+                444,
+                269
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    255,
+                    444,
+                    269
+                  ],
+                  "score": 1.0,
+                  "content": "The race function below sometimes returns the wrong value and sometimes runs forever.",
+                  "type": "text"
+                }
+              ],
+              "index": 7
+            }
+          ],
+          "index": 7,
+          "bbox_fs": [
+            52,
+            255,
+            444,
+            269
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            49,
+            282,
+            527,
+            546
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                285,
+                133,
+                298
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    285,
+                    133,
+                    298
+                  ],
+                  "score": 1.0,
+                  "content": "def race(x, y):",
+                  "type": "text"
+                }
+              ],
+              "index": 8
+            },
+            {
+              "bbox": [
+                70,
+                297,
+                459,
+                315
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    70,
+                    297,
+                    459,
+                    315
+                  ],
+                  "score": 1.0,
+                  "content": "\"\"\"The tortoise always walks x feet per minute, while the hare repeatedly",
+                  "type": "text"
+                }
+              ],
+              "index": 9
+            },
+            {
+              "bbox": [
+                72,
+                313,
+                463,
+                327
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    72,
+                    313,
+                    463,
+                    327
+                  ],
+                  "score": 1.0,
+                  "content": "runs y feet per minute for 5 minutes, then rests for 5 minutes. Return how",
+                  "type": "text"
+                }
+              ],
+              "index": 10
+            },
+            {
+              "bbox": [
+                72,
+                327,
+                420,
+                342
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    72,
+                    327,
+                    420,
+                    342
+                  ],
+                  "score": 1.0,
+                  "content": "many minutes pass until the tortoise first catches up to the hare.",
+                  "type": "text"
+                }
+              ],
+              "index": 11
+            },
+            {
+              "bbox": [
+                73,
+                355,
+                380,
+                371
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    73,
+                    358,
+                    91,
+                    368
+                  ],
+                  "score": 0.3,
+                  "content": "> > >",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    92,
+                    355,
+                    380,
+                    371
+                  ],
+                  "score": 1.0,
+                  "content": "race(5, 7) # After 7 minutes, both have gone 35 steps",
+                  "type": "text"
+                }
+              ],
+              "index": 12
+            },
+            {
+              "bbox": [
+                69,
+                372,
+                85,
+                382
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    69,
+                    372,
+                    85,
+                    382
+                  ],
+                  "score": 1.0,
+                  "content": "7",
+                  "type": "text"
+                }
+              ],
+              "index": 13
+            },
+            {
+              "bbox": [
+                73,
+                384,
+                380,
+                400
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    73,
+                    387,
+                    91,
+                    397
+                  ],
+                  "score": 0.31,
+                  "content": "> > >",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    92,
+                    384,
+                    380,
+                    400
+                  ],
+                  "score": 1.0,
+                  "content": "race(2, 4) # After 10 minutes, both have gone 20 steps",
+                  "type": "text"
+                }
+              ],
+              "index": 14
+            },
+            {
+              "bbox": [
+                72,
+                399,
+                88,
+                414
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    72,
+                    399,
+                    88,
+                    414
+                  ],
+                  "score": 1.0,
+                  "content": "10",
+                  "type": "text"
+                }
+              ],
+              "index": 15
+            },
+            {
+              "bbox": [
+                72,
+                414,
+                92,
+                424
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    72,
+                    414,
+                    92,
+                    424
+                  ],
+                  "score": 1.0,
+                  "content": "\"\"\"",
+                  "type": "text"
+                }
+              ],
+              "index": 16
+            },
+            {
+              "bbox": [
+                71,
+                428,
+                437,
+                442
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    71,
+                    428,
+                    109,
+                    442
+                  ],
+                  "score": 1.0,
+                  "content": "assert",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    109,
+                    430,
+                    138,
+                    442
+                  ],
+                  "score": 0.74,
+                  "content": "\\texttt { y } > \\texttt { x }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    138,
+                    428,
+                    161,
+                    442
+                  ],
+                  "score": 1.0,
+                  "content": "and",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    162,
+                    430,
+                    217,
+                    441
+                  ],
+                  "score": 0.87,
+                  "content": "\\texttt { y } < = \\texttt { 2 } * \\texttt { x }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    217,
+                    428,
+                    437,
+                    442
+                  ],
+                  "score": 1.0,
+                  "content": ", 'the hare must be fast but not too fast'",
+                  "type": "text"
+                }
+              ],
+              "index": 17
+            },
+            {
+              "bbox": [
+                73,
+                443,
+                250,
+                457
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    73,
+                    443,
+                    197,
+                    457
+                  ],
+                  "score": 1.0,
+                  "content": "tortoise, hare, minutes",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    198,
+                    445,
+                    216,
+                    454
+                  ],
+                  "score": 0.75,
+                  "content": "\\qquad = \\ 0",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    217,
+                    443,
+                    250,
+                    457
+                  ],
+                  "score": 1.0,
+                  "content": ", 0, 0",
+                  "type": "text"
+                }
+              ],
+              "index": 18
+            },
+            {
+              "bbox": [
+                72,
+                457,
+                274,
+                470
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    72,
+                    457,
+                    145,
+                    470
+                  ],
+                  "score": 1.0,
+                  "content": "while minutes",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    145,
+                    459,
+                    169,
+                    468
+                  ],
+                  "score": 0.87,
+                  "content": "\\scriptstyle = = 0",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    170,
+                    457,
+                    274,
+                    470
+                  ],
+                  "score": 1.0,
+                  "content": "or tortoise - hare:",
+                  "type": "text"
+                }
+              ],
+              "index": 19
+            },
+            {
+              "bbox": [
+                93,
+                471,
+                164,
+                484
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    93,
+                    471,
+                    140,
+                    484
+                  ],
+                  "score": 1.0,
+                  "content": "tortoise",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    141,
+                    474,
+                    164,
+                    483
+                  ],
+                  "score": 0.81,
+                  "content": "+ = \\texttt { x }",
+                  "type": "inline_equation"
+                }
+              ],
+              "index": 20
+            },
+            {
+              "bbox": [
+                93,
+                486,
+                201,
+                499
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    93,
+                    486,
+                    152,
+                    499
+                  ],
+                  "score": 1.0,
+                  "content": "if minutes",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    153,
+                    487,
+                    196,
+                    498
+                  ],
+                  "score": 0.46,
+                  "content": "\\% 1 0 < 5",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    196,
+                    486,
+                    201,
+                    499
+                  ],
+                  "score": 1.0,
+                  "content": ":",
+                  "type": "text"
+                }
+              ],
+              "index": 21
+            },
+            {
+              "bbox": [
+                113,
+                498,
+                168,
+                516
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    113,
+                    498,
+                    168,
+                    516
+                  ],
+                  "score": 1.0,
+                  "content": "hare += y",
+                  "type": "text"
+                }
+              ],
+              "index": 22
+            },
+            {
+              "bbox": [
+                92,
+                515,
+                162,
+                528
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    92,
+                    515,
+                    162,
+                    528
+                  ],
+                  "score": 1.0,
+                  "content": "minutes += 1",
+                  "type": "text"
+                }
+              ],
+              "index": 23
+            },
+            {
+              "bbox": [
+                71,
+                529,
+                151,
+                542
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    71,
+                    529,
+                    151,
+                    542
+                  ],
+                  "score": 1.0,
+                  "content": "return minutes",
+                  "type": "text"
+                }
+              ],
+              "index": 24
+            }
+          ],
+          "index": 16,
+          "bbox_fs": [
+            51,
+            285,
+            463,
+            542
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            567,
+            558,
+            594
+          ],
+          "lines": [
+            {
+              "bbox": [
+                50,
+                565,
+                559,
+                582
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    50,
+                    565,
+                    152,
+                    582
+                  ],
+                  "score": 1.0,
+                  "content": "Find positive integers",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    153,
+                    570,
+                    160,
+                    578
+                  ],
+                  "score": 0.34,
+                  "content": "\\mathtt { x }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    160,
+                    565,
+                    182,
+                    582
+                  ],
+                  "score": 1.0,
+                  "content": "and",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    182,
+                    570,
+                    189,
+                    579
+                  ],
+                  "score": 0.53,
+                  "content": "\\mathtt { y }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    190,
+                    565,
+                    219,
+                    582
+                  ],
+                  "score": 1.0,
+                  "content": "(with",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    219,
+                    570,
+                    226,
+                    579
+                  ],
+                  "score": 0.26,
+                  "content": "\\mathtt { y }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    227,
+                    565,
+                    282,
+                    582
+                  ],
+                  "score": 1.0,
+                  "content": "larger than",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    283,
+                    573,
+                    289,
+                    577
+                  ],
+                  "score": 0.8,
+                  "content": "\\mathbf { x }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    289,
+                    565,
+                    383,
+                    582
+                  ],
+                  "score": 1.0,
+                  "content": "but not larger than",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    384,
+                    571,
+                    410,
+                    577
+                  ],
+                  "score": 0.71,
+                  "content": "2 \\texttt { * * }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    411,
+                    565,
+                    559,
+                    582
+                  ],
+                  "score": 1.0,
+                  "content": ") for which either: - race(x, y)",
+                  "type": "text"
+                }
+              ],
+              "index": 25
+            },
+            {
+              "bbox": [
+                52,
+                582,
+                289,
+                594
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    582,
+                    178,
+                    594
+                  ],
+                  "score": 1.0,
+                  "content": "returns the wrong value or -",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    178,
+                    582,
+                    230,
+                    594
+                  ],
+                  "score": 0.58,
+                  "content": "\\mathtt { r a c e ( x , \\ y ) }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    231,
+                    582,
+                    289,
+                    594
+                  ],
+                  "score": 1.0,
+                  "content": "runs forever",
+                  "type": "text"
+                }
+              ],
+              "index": 26
+            }
+          ],
+          "index": 25.5,
+          "bbox_fs": [
+            50,
+            565,
+            559,
+            594
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            602,
+            554,
+            629
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                601,
+                556,
+                616
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    601,
+                    556,
+                    616
+                  ],
+                  "score": 1.0,
+                  "content": "You just need to find one pair of numbers that satisfies either of these conditions to finish the question, but if you",
+                  "type": "text"
+                }
+              ],
+              "index": 27
+            },
+            {
+              "bbox": [
+                51,
+                616,
+                191,
+                630
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    616,
+                    191,
+                    630
+                  ],
+                  "score": 1.0,
+                  "content": "want to think of more you can.",
+                  "type": "text"
+                }
+              ],
+              "index": 28
+            }
+          ],
+          "index": 27.5,
+          "bbox_fs": [
+            51,
+            601,
+            556,
+            630
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            636,
+            555,
+            664
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                637,
+                557,
+                649
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    637,
+                    91,
+                    649
+                  ],
+                  "score": 1.0,
+                  "content": "Notes: -",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    91,
+                    640,
+                    123,
+                    647
+                  ],
+                  "score": 0.76,
+                  "content": "\\texttt { x } + = \\texttt { 1 }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    123,
+                    637,
+                    188,
+                    649
+                  ],
+                  "score": 1.0,
+                  "content": "is the same as",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    189,
+                    639,
+                    236,
+                    647
+                  ],
+                  "score": 0.83,
+                  "content": "\\textbf { z } = \\textbf { x } + \\textbf { 1 }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    236,
+                    637,
+                    264,
+                    649
+                  ],
+                  "score": 1.0,
+                  "content": "when",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    265,
+                    642,
+                    270,
+                    647
+                  ],
+                  "score": 0.75,
+                  "content": "\\mathbf { x }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    271,
+                    637,
+                    557,
+                    649
+                  ],
+                  "score": 1.0,
+                  "content": "is assigned to a number. - 0 is a false value and all other numbers",
+                  "type": "text"
+                }
+              ],
+              "index": 29
+            },
+            {
+              "bbox": [
+                51,
+                651,
+                122,
+                663
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    651,
+                    122,
+                    663
+                  ],
+                  "score": 1.0,
+                  "content": "are true values.",
+                  "type": "text"
+                }
+              ],
+              "index": 30
+            }
+          ],
+          "index": 29.5,
+          "bbox_fs": [
+            51,
+            637,
+            557,
+            663
+          ]
+        }
+      ]
+    },
+    {
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            46,
+            121,
+            59
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                46,
+                122,
+                60
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    46,
+                    122,
+                    60
+                  ],
+                  "score": 1.0,
+                  "content": "Q2: Fizzbuzz",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            53,
+            67,
+            555,
+            158
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                66,
+                557,
+                158
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    66,
+                    239,
+                    81
+                  ],
+                  "score": 1.0,
+                  "content": "Implement the classic F i z z B u z z sequence.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    52,
+                    66,
+                    557,
+                    95
+                  ],
+                  "score": 1.0,
+                  "content": "The fizzbuzz function takes a positive integer \\mathbf { n } and prints out a single line for each integer from 1 to n.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    66,
+                    81,
+                    293,
+                    158
+                  ],
+                  "score": 1.0,
+                  "content": "For each i: • If i is divisible by both 3 and 5, print fizzbuzz. • If i is divisible by 3 (but not 5), print fizz. • If i is divisible by 5 (but not 3), print buzz. • Otherwise, print the number i.",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            }
+          ],
+          "index": 1.5
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            165,
+            294,
+            178
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                165,
+                295,
+                179
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    165,
+                    295,
+                    179
+                  ],
+                  "score": 1.0,
+                  "content": "Try to make your implementation of fizzbuzz concise.",
+                  "type": "text"
+                }
+              ],
+              "index": 7
+            }
+          ],
+          "index": 7
+        },
+        {
+          "type": "table",
+          "bbox": [
+            48,
+            192,
+            525,
+            526
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                48,
+                192,
+                525,
+                526
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    48,
+                    192,
+                    525,
+                    526
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        48,
+                        192,
+                        525,
+                        526
+                      ],
+                      "score": 0.769,
+                      "html": "<table><tr><td>def fizzbuzz(n): &quot;I I &quot;</td></tr><tr><td>&gt;&gt;&gt; result = fizzbuzz(16)</td></tr><tr><td>1</td></tr><tr><td>2</td></tr><tr><td>fizz</td></tr><tr><td>4</td></tr><tr><td>buzz</td></tr><tr><td>fizz</td></tr><tr><td>7 8</td></tr><tr><td>fizz</td></tr><tr><td>buzz</td></tr><tr><td>11</td></tr><tr><td>fizz</td></tr><tr><td>13</td></tr><tr><td>14</td></tr><tr><td>fizzbuzz</td></tr><tr><td>16</td></tr><tr><td>&gt;&gt;&gt; print(result)</td></tr><tr><td>None II I I</td></tr><tr><td>&quot;*** YOUR CODE HERE ***&quot;</td></tr><tr><td></td></tr></table>",
+                      "type": "table",
+                      "image_path": "94de95046de3b294525c2b69f11f79400c1f31970fa667173663c838d91ec7d3.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 9,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    48,
+                    192,
+                    525,
+                    303.3333333333333
+                  ],
+                  "spans": [],
+                  "index": 8
+                },
+                {
+                  "bbox": [
+                    48,
+                    303.3333333333333,
+                    525,
+                    414.66666666666663
+                  ],
+                  "spans": [],
+                  "index": 9
+                },
+                {
+                  "bbox": [
+                    48,
+                    414.66666666666663,
+                    525,
+                    526.0
+                  ],
+                  "spans": [],
+                  "index": 10
+                }
+              ]
+            }
+          ],
+          "index": 9,
+          "lines": []
+        }
+      ],
+      "page_idx": 1,
+      "page_size": [
+        612,
+        792
+      ],
+      "discarded_blocks": [
+        {
+          "type": "discarded",
+          "bbox": [
+            52,
+            22,
+            152,
+            33
+          ],
+          "lines": [
+            {
+              "bbox": [
+                50,
+                20,
+                153,
+                34
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    50,
+                    20,
+                    153,
+                    34
+                  ],
+                  "score": 1.0,
+                  "content": "2 Functions, Control",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "discarded",
+          "bbox": [
+            52,
+            751,
+            324,
+            758
+          ],
+          "lines": [
+            {
+              "bbox": [
+                53,
+                751,
+                324,
+                758
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    53,
+                    751,
+                    324,
+                    758
+                  ],
+                  "score": 1.0,
+                  "content": "Note: This worksheet is a problem bank—most TAs will not cover all the problems in discussion section.",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "para_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            46,
+            121,
+            59
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                46,
+                122,
+                60
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    46,
+                    122,
+                    60
+                  ],
+                  "score": 1.0,
+                  "content": "Q2: Fizzbuzz",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            53,
+            67,
+            555,
+            93
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                66,
+                557,
+                81
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    66,
+                    150,
+                    81
+                  ],
+                  "score": 1.0,
+                  "content": "Implement the classic",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    151,
+                    70,
+                    194,
+                    77
+                  ],
+                  "score": 0.31,
+                  "content": "F i z z B u z z",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    194,
+                    66,
+                    450,
+                    81
+                  ],
+                  "score": 1.0,
+                  "content": "sequence. The fizzbuzz function takes a positive integer",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    450,
+                    72,
+                    456,
+                    77
+                  ],
+                  "score": 0.6,
+                  "content": "\\mathbf { n }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    456,
+                    66,
+                    557,
+                    81
+                  ],
+                  "score": 1.0,
+                  "content": "and prints out a single",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            },
+            {
+              "bbox": [
+                52,
+                81,
+                250,
+                95
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    81,
+                    250,
+                    95
+                  ],
+                  "score": 1.0,
+                  "content": "line for each integer from 1 to n. For each i:",
+                  "type": "text"
+                }
+              ],
+              "index": 2
+            }
+          ],
+          "index": 1.5,
+          "bbox_fs": [
+            52,
+            66,
+            557,
+            95
+          ]
+        },
+        {
+          "type": "list",
+          "bbox": [
+            66,
+            101,
+            292,
+            158
+          ],
+          "lines": [
+            {
+              "bbox": [
+                66,
+                101,
+                293,
+                114
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    66,
+                    101,
+                    293,
+                    114
+                  ],
+                  "score": 1.0,
+                  "content": "• If i is divisible by both 3 and 5, print fizzbuzz.",
+                  "type": "text"
+                }
+              ],
+              "index": 3,
+              "is_list_end_line": true
+            },
+            {
+              "bbox": [
+                66,
+                115,
+                272,
+                129
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    66,
+                    115,
+                    272,
+                    129
+                  ],
+                  "score": 1.0,
+                  "content": "• If i is divisible by 3 (but not 5), print fizz.",
+                  "type": "text"
+                }
+              ],
+              "index": 4,
+              "is_list_start_line": true,
+              "is_list_end_line": true
+            },
+            {
+              "bbox": [
+                66,
+                129,
+                272,
+                144
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    66,
+                    129,
+                    272,
+                    144
+                  ],
+                  "score": 1.0,
+                  "content": "• If i is divisible by 5 (but not 3), print buzz.",
+                  "type": "text"
+                }
+              ],
+              "index": 5,
+              "is_list_start_line": true,
+              "is_list_end_line": true
+            },
+            {
+              "bbox": [
+                66,
+                144,
+                216,
+                158
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    66,
+                    144,
+                    216,
+                    158
+                  ],
+                  "score": 1.0,
+                  "content": "• Otherwise, print the number i.",
+                  "type": "text"
+                }
+              ],
+              "index": 6,
+              "is_list_start_line": true,
+              "is_list_end_line": true
+            }
+          ],
+          "index": 4.5,
+          "bbox_fs": [
+            66,
+            101,
+            293,
+            158
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            165,
+            294,
+            178
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                165,
+                295,
+                179
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    165,
+                    295,
+                    179
+                  ],
+                  "score": 1.0,
+                  "content": "Try to make your implementation of fizzbuzz concise.",
+                  "type": "text"
+                }
+              ],
+              "index": 7
+            }
+          ],
+          "index": 7,
+          "bbox_fs": [
+            52,
+            165,
+            295,
+            179
+          ]
+        },
+        {
+          "type": "table",
+          "bbox": [
+            48,
+            192,
+            525,
+            526
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                48,
+                192,
+                525,
+                526
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    48,
+                    192,
+                    525,
+                    526
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        48,
+                        192,
+                        525,
+                        526
+                      ],
+                      "score": 0.769,
+                      "html": "<table><tr><td>def fizzbuzz(n): &quot;I I &quot;</td></tr><tr><td>&gt;&gt;&gt; result = fizzbuzz(16)</td></tr><tr><td>1</td></tr><tr><td>2</td></tr><tr><td>fizz</td></tr><tr><td>4</td></tr><tr><td>buzz</td></tr><tr><td>fizz</td></tr><tr><td>7 8</td></tr><tr><td>fizz</td></tr><tr><td>buzz</td></tr><tr><td>11</td></tr><tr><td>fizz</td></tr><tr><td>13</td></tr><tr><td>14</td></tr><tr><td>fizzbuzz</td></tr><tr><td>16</td></tr><tr><td>&gt;&gt;&gt; print(result)</td></tr><tr><td>None II I I</td></tr><tr><td>&quot;*** YOUR CODE HERE ***&quot;</td></tr><tr><td></td></tr></table>",
+                      "type": "table",
+                      "image_path": "94de95046de3b294525c2b69f11f79400c1f31970fa667173663c838d91ec7d3.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 9,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    48,
+                    192,
+                    525,
+                    303.3333333333333
+                  ],
+                  "spans": [],
+                  "index": 8
+                },
+                {
+                  "bbox": [
+                    48,
+                    303.3333333333333,
+                    525,
+                    414.66666666666663
+                  ],
+                  "spans": [],
+                  "index": 9
+                },
+                {
+                  "bbox": [
+                    48,
+                    414.66666666666663,
+                    525,
+                    526.0
+                  ],
+                  "spans": [],
+                  "index": 10
+                }
+              ]
+            }
+          ],
+          "index": 9
+        }
+      ]
+    },
+    {
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            42,
+            179,
+            66
+          ],
+          "lines": [
+            {
+              "bbox": [
+                50,
+                39,
+                182,
+                72
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    50,
+                    39,
+                    182,
+                    72
+                  ],
+                  "score": 1.0,
+                  "content": "Problem Solving",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            73,
+            560,
+            163
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                72,
+                561,
+                87
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    72,
+                    318,
+                    87
+                  ],
+                  "score": 1.0,
+                  "content": "A useful approach to implementing a function is to: 1.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    318,
+                    72,
+                    561,
+                    87
+                  ],
+                  "score": 1.0,
+                  "content": "Pick an example input and corresponding output. 2.",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            },
+            {
+              "bbox": [
+                51,
+                87,
+                560,
+                164
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    87,
+                    490,
+                    101
+                  ],
+                  "score": 1.0,
+                  "content": "Describe a process (in English) that computes the output from the input using simple steps. 3.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    87,
+                    560,
+                    115
+                  ],
+                  "score": 1.0,
+                  "content": "Figure out what additional names you’ll need to carry out this process. 4.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    101,
+                    559,
+                    129
+                  ],
+                  "score": 1.0,
+                  "content": "Implement the process in code using those additional names. 5.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    97,
+                    115,
+                    462,
+                    129
+                  ],
+                  "score": 1.0,
+                  "content": "Determine whether the implementation really works on your original example. 6.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    52,
+                    115,
+                    559,
+                    164
+                  ],
+                  "score": 1.0,
+                  "content": "Determine whether the implementation really works on other examples. (If not, you might need to revise step 2.) Importantly, this approach doesn’t go straight from reading a question to writing code.",
+                  "type": "text"
+                }
+              ],
+              "index": 2
+            }
+          ],
+          "index": 3
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            170,
+            560,
+            240
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                172,
+                560,
+                184
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    172,
+                    319,
+                    184
+                  ],
+                  "score": 1.0,
+                  "content": "For example, in the is_prime problem below, you could: 1.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    319,
+                    172,
+                    560,
+                    184
+                  ],
+                  "score": 1.0,
+                  "content": "Pick n is 9 as the input and False as the output. 2.",
+                  "type": "text"
+                }
+              ],
+              "index": 7
+            },
+            {
+              "bbox": [
+                51,
+                185,
+                560,
+                241
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    185,
+                    455,
+                    199
+                  ],
+                  "score": 1.0,
+                  "content": "Here’s a process: Check that 9 (n) is not a multiple of any integers between 1 and 9 (n). 3.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    185,
+                    560,
+                    214
+                  ],
+                  "score": 1.0,
+                  "content": "Introduce i to represent each number between 1 and 9 (n). 4.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    223,
+                    200,
+                    535,
+                    214
+                  ],
+                  "score": 1.0,
+                  "content": "Implement is_prime (you get to do this part with your group). 5.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    52,
+                    200,
+                    560,
+                    226
+                  ],
+                  "score": 1.0,
+                  "content": "Check that is_prime(9) will return False by thinking through the execution of the code. 6.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    52,
+                    214,
+                    558,
+                    241
+                  ],
+                  "score": 1.0,
+                  "content": "Check that is_prime(3) will return True and is_prime(1) will return False.",
+                  "type": "text"
+                }
+              ],
+              "index": 8
+            }
+          ],
+          "index": 9
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            248,
+            288,
+            261
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                248,
+                290,
+                263
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    248,
+                    290,
+                    263
+                  ],
+                  "score": 1.0,
+                  "content": "Try this approach together on the next two problems.",
+                  "type": "text"
+                }
+              ],
+              "index": 12
+            }
+          ],
+          "index": 12
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            268,
+            560,
+            324
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                268,
+                560,
+                326
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    268,
+                    497,
+                    281
+                  ],
+                  "score": 1.0,
+                  "content": "Important: It’s highly recommended that you don’t check your work using a computer right away.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    268,
+                    559,
+                    297
+                  ],
+                  "score": 1.0,
+                  "content": "Instead, talk to your group and think to try to figure out if an answer is correct.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    283,
+                    560,
+                    312
+                  ],
+                  "score": 1.0,
+                  "content": "On exams, you won’t be able to guess and check because you won’t have a Python interpreter.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    297,
+                    560,
+                    326
+                  ],
+                  "score": 1.0,
+                  "content": "Now is a great time to practice checking your work by thinking through examples.",
+                  "type": "text"
+                }
+              ],
+              "index": 13
+            }
+          ],
+          "index": 14.5
+        },
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            339,
+            126,
+            352
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                339,
+                126,
+                354
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    339,
+                    126,
+                    354
+                  ],
+                  "score": 1.0,
+                  "content": "Q3: Is Prime?",
+                  "type": "text"
+                }
+              ],
+              "index": 17
+            }
+          ],
+          "index": 17
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            361,
+            481,
+            374
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                360,
+                481,
+                374
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    360,
+                    481,
+                    374
+                  ],
+                  "score": 1.0,
+                  "content": "Write a function that returns True if a positive integer n is a prime number and False otherwise.",
+                  "type": "text"
+                }
+              ],
+              "index": 18
+            }
+          ],
+          "index": 18
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            381,
+            555,
+            408
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                381,
+                558,
+                408
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    381,
+                    475,
+                    394
+                  ],
+                  "score": 1.0,
+                  "content": "A prime number n is a number that is not divisible by any numbers other than 1 and n itself.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    51,
+                    381,
+                    558,
+                    408
+                  ],
+                  "score": 1.0,
+                  "content": "For example, 13 is prime, since it is only divisible by 1 and 13, but 14 is not, since it is divisible by 1, 2, 7, and 14.",
+                  "type": "text"
+                }
+              ],
+              "index": 19
+            }
+          ],
+          "index": 19.5
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            416,
+            374,
+            429
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                414,
+                376,
+                431
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    414,
+                    376,
+                    431
+                  ],
+                  "score": 1.0,
+                  "content": "Use the \\% operator: x % y returns the remainder of \\mathtt { x } when divided by y.",
+                  "type": "text"
+                }
+              ],
+              "index": 21
+            }
+          ],
+          "index": 21
+        },
+        {
+          "type": "table",
+          "bbox": [
+            46,
+            441,
+            523,
+            592
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                46,
+                441,
+                523,
+                592
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    46,
+                    441,
+                    523,
+                    592
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        46,
+                        441,
+                        523,
+                        592
+                      ],
+                      "score": 0.205,
+                      "html": "<table><tr><td>def is_prime(n):</td></tr><tr><td>II II &quot;</td></tr><tr><td>&gt;&gt;&gt; is_prime(10)</td></tr><tr><td>False</td></tr><tr><td>&gt;&gt;&gt; is_prime(7)</td></tr><tr><td>True</td></tr><tr><td>&gt;&gt; is_prime(1) # one is not a prime number!!</td></tr><tr><td>False</td></tr><tr><td>&quot; I &quot;*** YOUR CODE HERE ***&quot;</td></tr></table>",
+                      "type": "table",
+                      "image_path": "183cd191449c76733b39d5168b94a3d9cc5c2b07de5e1101bb69ae364c7dafb5.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 23,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    46,
+                    441,
+                    523,
+                    491.3333333333333
+                  ],
+                  "spans": [],
+                  "index": 22
+                },
+                {
+                  "bbox": [
+                    46,
+                    491.3333333333333,
+                    523,
+                    541.6666666666666
+                  ],
+                  "spans": [],
+                  "index": 23
+                },
+                {
+                  "bbox": [
+                    46,
+                    541.6666666666666,
+                    523,
+                    592.0
+                  ],
+                  "spans": [],
+                  "index": 24
+                }
+              ]
+            }
+          ],
+          "index": 23,
+          "lines": []
+        }
+      ],
+      "page_idx": 2,
+      "page_size": [
+        612,
+        792
+      ],
+      "discarded_blocks": [
+        {
+          "type": "discarded",
+          "bbox": [
+            454,
+            22,
+            555,
+            33
+          ],
+          "lines": [
+            {
+              "bbox": [
+                453,
+                20,
+                557,
+                35
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    453,
+                    20,
+                    557,
+                    35
+                  ],
+                  "score": 1.0,
+                  "content": "Functions, Control 3",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "discarded",
+          "bbox": [
+            52,
+            750,
+            324,
+            758
+          ],
+          "lines": [
+            {
+              "bbox": [
+                53,
+                751,
+                324,
+                758
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    53,
+                    751,
+                    324,
+                    758
+                  ],
+                  "score": 1.0,
+                  "content": "Note: This worksheet is a problem bank—most TAs will not cover all the problems in discussion section.",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "para_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            42,
+            179,
+            66
+          ],
+          "lines": [
+            {
+              "bbox": [
+                50,
+                39,
+                182,
+                72
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    50,
+                    39,
+                    182,
+                    72
+                  ],
+                  "score": 1.0,
+                  "content": "Problem Solving",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            73,
+            560,
+            143
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                72,
+                561,
+                87
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    72,
+                    561,
+                    87
+                  ],
+                  "score": 1.0,
+                  "content": "A useful approach to implementing a function is to: 1. Pick an example input and corresponding output. 2.",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            },
+            {
+              "bbox": [
+                52,
+                87,
+                560,
+                101
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    87,
+                    560,
+                    101
+                  ],
+                  "score": 1.0,
+                  "content": "Describe a process (in English) that computes the output from the input using simple steps. 3. Figure out what",
+                  "type": "text"
+                }
+              ],
+              "index": 2
+            },
+            {
+              "bbox": [
+                51,
+                101,
+                559,
+                115
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    101,
+                    559,
+                    115
+                  ],
+                  "score": 1.0,
+                  "content": "additional names you’ll need to carry out this process. 4. Implement the process in code using those additional",
+                  "type": "text"
+                }
+              ],
+              "index": 3
+            },
+            {
+              "bbox": [
+                51,
+                115,
+                559,
+                129
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    115,
+                    559,
+                    129
+                  ],
+                  "score": 1.0,
+                  "content": "names. 5. Determine whether the implementation really works on your original example. 6. Determine whether the",
+                  "type": "text"
+                }
+              ],
+              "index": 4
+            },
+            {
+              "bbox": [
+                52,
+                131,
+                447,
+                144
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    131,
+                    447,
+                    144
+                  ],
+                  "score": 1.0,
+                  "content": "implementation really works on other examples. (If not, you might need to revise step 2.)",
+                  "type": "text"
+                }
+              ],
+              "index": 5
+            }
+          ],
+          "index": 3,
+          "bbox_fs": [
+            51,
+            72,
+            561,
+            144
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            54,
+            150,
+            435,
+            163
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                150,
+                435,
+                164
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    150,
+                    435,
+                    164
+                  ],
+                  "score": 1.0,
+                  "content": "Importantly, this approach doesn’t go straight from reading a question to writing code.",
+                  "type": "text"
+                }
+              ],
+              "index": 6
+            }
+          ],
+          "index": 6,
+          "bbox_fs": [
+            52,
+            150,
+            435,
+            164
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            170,
+            560,
+            240
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                172,
+                560,
+                184
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    172,
+                    560,
+                    184
+                  ],
+                  "score": 1.0,
+                  "content": "For example, in the is_prime problem below, you could: 1. Pick n is 9 as the input and False as the output. 2.",
+                  "type": "text"
+                }
+              ],
+              "index": 7
+            },
+            {
+              "bbox": [
+                51,
+                185,
+                560,
+                199
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    185,
+                    560,
+                    199
+                  ],
+                  "score": 1.0,
+                  "content": "Here’s a process: Check that 9 (n) is not a multiple of any integers between 1 and 9 (n). 3. Introduce i to represent",
+                  "type": "text"
+                }
+              ],
+              "index": 8
+            },
+            {
+              "bbox": [
+                51,
+                200,
+                560,
+                214
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    200,
+                    560,
+                    214
+                  ],
+                  "score": 1.0,
+                  "content": "each number between 1 and 9 (n). 4. Implement is_prime (you get to do this part with your group). 5. Check",
+                  "type": "text"
+                }
+              ],
+              "index": 9
+            },
+            {
+              "bbox": [
+                52,
+                214,
+                558,
+                226
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    214,
+                    558,
+                    226
+                  ],
+                  "score": 1.0,
+                  "content": "that is_prime(9) will return False by thinking through the execution of the code. 6. Check that is_prime(3) will",
+                  "type": "text"
+                }
+              ],
+              "index": 10
+            },
+            {
+              "bbox": [
+                52,
+                229,
+                268,
+                241
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    229,
+                    268,
+                    241
+                  ],
+                  "score": 1.0,
+                  "content": "return True and is_prime(1) will return False.",
+                  "type": "text"
+                }
+              ],
+              "index": 11
+            }
+          ],
+          "index": 9,
+          "bbox_fs": [
+            51,
+            172,
+            560,
+            241
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            248,
+            288,
+            261
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                248,
+                290,
+                263
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    248,
+                    290,
+                    263
+                  ],
+                  "score": 1.0,
+                  "content": "Try this approach together on the next two problems.",
+                  "type": "text"
+                }
+              ],
+              "index": 12
+            }
+          ],
+          "index": 12,
+          "bbox_fs": [
+            52,
+            248,
+            290,
+            263
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            268,
+            560,
+            324
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                268,
+                559,
+                281
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    268,
+                    559,
+                    281
+                  ],
+                  "score": 1.0,
+                  "content": "Important: It’s highly recommended that you don’t check your work using a computer right away. Instead, talk",
+                  "type": "text"
+                }
+              ],
+              "index": 13
+            },
+            {
+              "bbox": [
+                51,
+                283,
+                560,
+                297
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    283,
+                    560,
+                    297
+                  ],
+                  "score": 1.0,
+                  "content": "to your group and think to try to figure out if an answer is correct. On exams, you won’t be able to guess and",
+                  "type": "text"
+                }
+              ],
+              "index": 14
+            },
+            {
+              "bbox": [
+                51,
+                297,
+                560,
+                312
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    297,
+                    560,
+                    312
+                  ],
+                  "score": 1.0,
+                  "content": "check because you won’t have a Python interpreter. Now is a great time to practice checking your work by thinking",
+                  "type": "text"
+                }
+              ],
+              "index": 15
+            },
+            {
+              "bbox": [
+                51,
+                312,
+                136,
+                326
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    312,
+                    136,
+                    326
+                  ],
+                  "score": 1.0,
+                  "content": "through examples.",
+                  "type": "text"
+                }
+              ],
+              "index": 16
+            }
+          ],
+          "index": 14.5,
+          "bbox_fs": [
+            51,
+            268,
+            560,
+            326
+          ]
+        },
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            339,
+            126,
+            352
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                339,
+                126,
+                354
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    339,
+                    126,
+                    354
+                  ],
+                  "score": 1.0,
+                  "content": "Q3: Is Prime?",
+                  "type": "text"
+                }
+              ],
+              "index": 17
+            }
+          ],
+          "index": 17
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            361,
+            481,
+            374
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                360,
+                481,
+                374
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    360,
+                    481,
+                    374
+                  ],
+                  "score": 1.0,
+                  "content": "Write a function that returns True if a positive integer n is a prime number and False otherwise.",
+                  "type": "text"
+                }
+              ],
+              "index": 18
+            }
+          ],
+          "index": 18,
+          "bbox_fs": [
+            51,
+            360,
+            481,
+            374
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            51,
+            381,
+            555,
+            408
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                381,
+                558,
+                394
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    381,
+                    558,
+                    394
+                  ],
+                  "score": 1.0,
+                  "content": "A prime number n is a number that is not divisible by any numbers other than 1 and n itself. For example, 13 is",
+                  "type": "text"
+                }
+              ],
+              "index": 19
+            },
+            {
+              "bbox": [
+                51,
+                396,
+                474,
+                408
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    396,
+                    474,
+                    408
+                  ],
+                  "score": 1.0,
+                  "content": "prime, since it is only divisible by 1 and 13, but 14 is not, since it is divisible by 1, 2, 7, and 14.",
+                  "type": "text"
+                }
+              ],
+              "index": 20
+            }
+          ],
+          "index": 19.5,
+          "bbox_fs": [
+            51,
+            381,
+            558,
+            408
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            416,
+            374,
+            429
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                414,
+                376,
+                431
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    414,
+                    88,
+                    431
+                  ],
+                  "score": 1.0,
+                  "content": "Use the",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    89,
+                    417,
+                    95,
+                    427
+                  ],
+                  "score": 0.45,
+                  "content": "\\%",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    96,
+                    414,
+                    281,
+                    431
+                  ],
+                  "score": 1.0,
+                  "content": "operator: x % y returns the remainder of",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    281,
+                    421,
+                    287,
+                    426
+                  ],
+                  "score": 0.27,
+                  "content": "\\mathtt { x }",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    288,
+                    414,
+                    376,
+                    431
+                  ],
+                  "score": 1.0,
+                  "content": "when divided by y.",
+                  "type": "text"
+                }
+              ],
+              "index": 21
+            }
+          ],
+          "index": 21,
+          "bbox_fs": [
+            52,
+            414,
+            376,
+            431
+          ]
+        },
+        {
+          "type": "table",
+          "bbox": [
+            46,
+            441,
+            523,
+            592
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                46,
+                441,
+                523,
+                592
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    46,
+                    441,
+                    523,
+                    592
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        46,
+                        441,
+                        523,
+                        592
+                      ],
+                      "score": 0.205,
+                      "html": "<table><tr><td>def is_prime(n):</td></tr><tr><td>II II &quot;</td></tr><tr><td>&gt;&gt;&gt; is_prime(10)</td></tr><tr><td>False</td></tr><tr><td>&gt;&gt;&gt; is_prime(7)</td></tr><tr><td>True</td></tr><tr><td>&gt;&gt; is_prime(1) # one is not a prime number!!</td></tr><tr><td>False</td></tr><tr><td>&quot; I &quot;*** YOUR CODE HERE ***&quot;</td></tr></table>",
+                      "type": "table",
+                      "image_path": "183cd191449c76733b39d5168b94a3d9cc5c2b07de5e1101bb69ae364c7dafb5.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 23,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    46,
+                    441,
+                    523,
+                    491.3333333333333
+                  ],
+                  "spans": [],
+                  "index": 22
+                },
+                {
+                  "bbox": [
+                    46,
+                    491.3333333333333,
+                    523,
+                    541.6666666666666
+                  ],
+                  "spans": [],
+                  "index": 23
+                },
+                {
+                  "bbox": [
+                    46,
+                    541.6666666666666,
+                    523,
+                    592.0
+                  ],
+                  "spans": [],
+                  "index": 24
+                }
+              ]
+            }
+          ],
+          "index": 23
+        }
+      ]
+    },
+    {
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            46,
+            147,
+            59
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                45,
+                148,
+                60
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    45,
+                    148,
+                    60
+                  ],
+                  "score": 1.0,
+                  "content": "Q4: Unique Digits",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            53,
+            67,
+            398,
+            79
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                65,
+                399,
+                81
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    65,
+                    399,
+                    81
+                  ],
+                  "score": 1.0,
+                  "content": "Write a function that returns the number of unique digits in a positive integer.",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            }
+          ],
+          "index": 1
+        },
+        {
+          "type": "text",
+          "bbox": [
+            72,
+            87,
+            532,
+            100
+          ],
+          "lines": [
+            {
+              "bbox": [
+                75,
+                85,
+                532,
+                101
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    75,
+                    85,
+                    532,
+                    101
+                  ],
+                  "score": 1.0,
+                  "content": "Hints: You can use // and \\% to separate a positive integer into its one’s digit and the rest of its digits.",
+                  "type": "text"
+                }
+              ],
+              "index": 2
+            }
+          ],
+          "index": 2
+        },
+        {
+          "type": "text",
+          "bbox": [
+            73,
+            107,
+            534,
+            135
+          ],
+          "lines": [
+            {
+              "bbox": [
+                76,
+                107,
+                534,
+                135
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    76,
+                    107,
+                    534,
+                    135
+                  ],
+                  "score": 1.0,
+                  "content": "You may find it helpful to first define a function has_digit(n, k), which determines whether a number n has digit k.",
+                  "type": "text"
+                }
+              ],
+              "index": 3
+            }
+          ],
+          "index": 3.5
+        },
+        {
+          "type": "table",
+          "bbox": [
+            46,
+            139,
+            527,
+            614
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                46,
+                139,
+                527,
+                614
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    46,
+                    139,
+                    527,
+                    614
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        46,
+                        139,
+                        527,
+                        614
+                      ],
+                      "score": 0.293,
+                      "html": "<table><tr><td>def unique_digits(n): &quot;&quot;&quot;Return the number of unique digits in positive integer n.</td></tr><tr><td></td></tr><tr><td>&gt;&gt;&gt; unique_digits(8675309) # All are unique 7</td></tr><tr><td>&gt;&gt; unique_digits(13173131) # 1, 3, and 7 3</td></tr><tr><td>&gt;&gt;&gt; unique_digits(101) # 0 and 1 2</td></tr><tr><td>II  &quot;I</td></tr><tr><td>&quot;*** YOUR CODE HERE ***&quot;</td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td>def has_digit(n, k):</td></tr><tr><td>&quot;&quot;&quot;Returns whether k is a digit in n.</td></tr><tr><td></td></tr><tr><td>&gt;&gt;&gt; has_digit(10, 1)</td></tr><tr><td></td></tr><tr><td>True</td></tr><tr><td>&gt;&gt;&gt; has_digit(12, 7)</td></tr><tr><td></td></tr><tr><td>False</td></tr><tr><td></td></tr><tr><td>II I &quot;I</td></tr><tr><td>assert k &gt;= 0 and k &lt; 10</td></tr></table>",
+                      "type": "table",
+                      "image_path": "ff21fbf9dea4f8ccb1d5ffc6c075a08517ec5b13a7391e50f9ef7410ab5f51f4.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 6,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    46,
+                    139,
+                    527,
+                    297.33333333333337
+                  ],
+                  "spans": [],
+                  "index": 5
+                },
+                {
+                  "bbox": [
+                    46,
+                    297.33333333333337,
+                    527,
+                    455.66666666666674
+                  ],
+                  "spans": [],
+                  "index": 6
+                },
+                {
+                  "bbox": [
+                    46,
+                    455.66666666666674,
+                    527,
+                    614.0000000000001
+                  ],
+                  "spans": [],
+                  "index": 7
+                }
+              ]
+            }
+          ],
+          "index": 6,
+          "lines": []
+        }
+      ],
+      "page_idx": 3,
+      "page_size": [
+        612,
+        792
+      ],
+      "discarded_blocks": [
+        {
+          "type": "discarded",
+          "bbox": [
+            52,
+            750,
+            324,
+            758
+          ],
+          "lines": [
+            {
+              "bbox": [
+                53,
+                751,
+                324,
+                758
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    53,
+                    751,
+                    324,
+                    758
+                  ],
+                  "score": 1.0,
+                  "content": "Note: This worksheet is a problem bank—most TAs will not cover all the problems in discussion section.",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "discarded",
+          "bbox": [
+            52,
+            22,
+            152,
+            33
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                20,
+                153,
+                35
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    20,
+                    153,
+                    35
+                  ],
+                  "score": 1.0,
+                  "content": "4 Functions, Control",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "para_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            46,
+            147,
+            59
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                45,
+                148,
+                60
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    45,
+                    148,
+                    60
+                  ],
+                  "score": 1.0,
+                  "content": "Q4: Unique Digits",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            53,
+            67,
+            398,
+            79
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                65,
+                399,
+                81
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    65,
+                    399,
+                    81
+                  ],
+                  "score": 1.0,
+                  "content": "Write a function that returns the number of unique digits in a positive integer.",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            }
+          ],
+          "index": 1,
+          "bbox_fs": [
+            51,
+            65,
+            399,
+            81
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            72,
+            87,
+            532,
+            100
+          ],
+          "lines": [
+            {
+              "bbox": [
+                75,
+                85,
+                532,
+                101
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    75,
+                    85,
+                    201,
+                    101
+                  ],
+                  "score": 1.0,
+                  "content": "Hints: You can use // and",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    201,
+                    90,
+                    208,
+                    98
+                  ],
+                  "score": 0.45,
+                  "content": "\\%",
+                  "type": "inline_equation"
+                },
+                {
+                  "bbox": [
+                    208,
+                    85,
+                    532,
+                    101
+                  ],
+                  "score": 1.0,
+                  "content": "to separate a positive integer into its one’s digit and the rest of its digits.",
+                  "type": "text"
+                }
+              ],
+              "index": 2
+            }
+          ],
+          "index": 2,
+          "bbox_fs": [
+            75,
+            85,
+            532,
+            101
+          ]
+        },
+        {
+          "type": "text",
+          "bbox": [
+            73,
+            107,
+            534,
+            135
+          ],
+          "lines": [
+            {
+              "bbox": [
+                76,
+                107,
+                534,
+                121
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    76,
+                    107,
+                    534,
+                    121
+                  ],
+                  "score": 1.0,
+                  "content": "You may find it helpful to first define a function has_digit(n, k), which determines whether a number",
+                  "type": "text"
+                }
+              ],
+              "index": 3
+            },
+            {
+              "bbox": [
+                76,
+                122,
+                137,
+                135
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    76,
+                    122,
+                    137,
+                    135
+                  ],
+                  "score": 1.0,
+                  "content": "n has digit k.",
+                  "type": "text"
+                }
+              ],
+              "index": 4
+            }
+          ],
+          "index": 3.5,
+          "bbox_fs": [
+            76,
+            107,
+            534,
+            135
+          ]
+        },
+        {
+          "type": "table",
+          "bbox": [
+            46,
+            139,
+            527,
+            614
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                46,
+                139,
+                527,
+                614
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    46,
+                    139,
+                    527,
+                    614
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        46,
+                        139,
+                        527,
+                        614
+                      ],
+                      "score": 0.293,
+                      "html": "<table><tr><td>def unique_digits(n): &quot;&quot;&quot;Return the number of unique digits in positive integer n.</td></tr><tr><td></td></tr><tr><td>&gt;&gt;&gt; unique_digits(8675309) # All are unique 7</td></tr><tr><td>&gt;&gt; unique_digits(13173131) # 1, 3, and 7 3</td></tr><tr><td>&gt;&gt;&gt; unique_digits(101) # 0 and 1 2</td></tr><tr><td>II  &quot;I</td></tr><tr><td>&quot;*** YOUR CODE HERE ***&quot;</td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr><tr><td>def has_digit(n, k):</td></tr><tr><td>&quot;&quot;&quot;Returns whether k is a digit in n.</td></tr><tr><td></td></tr><tr><td>&gt;&gt;&gt; has_digit(10, 1)</td></tr><tr><td></td></tr><tr><td>True</td></tr><tr><td>&gt;&gt;&gt; has_digit(12, 7)</td></tr><tr><td></td></tr><tr><td>False</td></tr><tr><td></td></tr><tr><td>II I &quot;I</td></tr><tr><td>assert k &gt;= 0 and k &lt; 10</td></tr></table>",
+                      "type": "table",
+                      "image_path": "ff21fbf9dea4f8ccb1d5ffc6c075a08517ec5b13a7391e50f9ef7410ab5f51f4.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 6,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    46,
+                    139,
+                    527,
+                    297.33333333333337
+                  ],
+                  "spans": [],
+                  "index": 5
+                },
+                {
+                  "bbox": [
+                    46,
+                    297.33333333333337,
+                    527,
+                    455.66666666666674
+                  ],
+                  "spans": [],
+                  "index": 6
+                },
+                {
+                  "bbox": [
+                    46,
+                    455.66666666666674,
+                    527,
+                    614.0000000000001
+                  ],
+                  "spans": [],
+                  "index": 7
+                }
+              ]
+            }
+          ],
+          "index": 6
+        }
+      ]
+    },
+    {
+      "preproc_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            46,
+            153,
+            59
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                45,
+                153,
+                62
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    45,
+                    153,
+                    62
+                  ],
+                  "score": 1.0,
+                  "content": "Q5: Ordered Digits",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            67,
+            560,
+            108
+          ],
+          "lines": [
+            {
+              "bbox": [
+                51,
+                67,
+                561,
+                108
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    67,
+                    559,
+                    95
+                  ],
+                  "score": 1.0,
+                  "content": "Implement the function ordered_digits, which takes as input a positive integer and returns True if its digits, read left to right, are in non-decreasing order, and False otherwise.",
+                  "type": "text"
+                },
+                {
+                  "bbox": [
+                    52,
+                    79,
+                    561,
+                    108
+                  ],
+                  "score": 1.0,
+                  "content": "For example, the digits of 5, 11, 127, 1357 are ordered, but not those of 21 or 1375.",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            }
+          ],
+          "index": 2
+        },
+        {
+          "type": "table",
+          "bbox": [
+            48,
+            120,
+            526,
+            399
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                48,
+                120,
+                526,
+                399
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    48,
+                    120,
+                    526,
+                    399
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        48,
+                        120,
+                        526,
+                        399
+                      ],
+                      "score": 0.461,
+                      "html": "<table><tr><td>def ordered_digits(x): &quot;&quot;&quot;Return True if the (base 10) digits of X&gt;0 are in non-decreasing</td></tr></table>",
+                      "type": "table",
+                      "image_path": "23b911171e23c7874f2e95a8fae2eec88ddd2f054f414ec0e8548254d68af0aa.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 5,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    48,
+                    120,
+                    526,
+                    213.0
+                  ],
+                  "spans": [],
+                  "index": 4
+                },
+                {
+                  "bbox": [
+                    48,
+                    213.0,
+                    526,
+                    306.0
+                  ],
+                  "spans": [],
+                  "index": 5
+                },
+                {
+                  "bbox": [
+                    48,
+                    306.0,
+                    526,
+                    399.0
+                  ],
+                  "spans": [],
+                  "index": 6
+                }
+              ]
+            }
+          ],
+          "index": 5,
+          "lines": []
+        }
+      ],
+      "page_idx": 4,
+      "page_size": [
+        612,
+        792
+      ],
+      "discarded_blocks": [
+        {
+          "type": "discarded",
+          "bbox": [
+            454,
+            22,
+            555,
+            33
+          ],
+          "lines": [
+            {
+              "bbox": [
+                453,
+                20,
+                557,
+                35
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    453,
+                    20,
+                    557,
+                    35
+                  ],
+                  "score": 1.0,
+                  "content": "Functions, Control 5",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "discarded",
+          "bbox": [
+            52,
+            750,
+            324,
+            758
+          ],
+          "lines": [
+            {
+              "bbox": [
+                53,
+                751,
+                324,
+                758
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    53,
+                    751,
+                    324,
+                    758
+                  ],
+                  "score": 1.0,
+                  "content": "Note: This worksheet is a problem bank—most TAs will not cover all the problems in discussion section.",
+                  "type": "text"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "para_blocks": [
+        {
+          "type": "title",
+          "bbox": [
+            53,
+            46,
+            153,
+            59
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                45,
+                153,
+                62
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    45,
+                    153,
+                    62
+                  ],
+                  "score": 1.0,
+                  "content": "Q5: Ordered Digits",
+                  "type": "text"
+                }
+              ],
+              "index": 0
+            }
+          ],
+          "index": 0
+        },
+        {
+          "type": "text",
+          "bbox": [
+            52,
+            67,
+            560,
+            108
+          ],
+          "lines": [
+            {
+              "bbox": [
+                52,
+                67,
+                559,
+                80
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    67,
+                    559,
+                    80
+                  ],
+                  "score": 1.0,
+                  "content": "Implement the function ordered_digits, which takes as input a positive integer and returns True if its digits, read",
+                  "type": "text"
+                }
+              ],
+              "index": 1
+            },
+            {
+              "bbox": [
+                51,
+                79,
+                561,
+                95
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    51,
+                    79,
+                    561,
+                    95
+                  ],
+                  "score": 1.0,
+                  "content": "left to right, are in non-decreasing order, and False otherwise. For example, the digits of 5, 11, 127, 1357 are ordered,",
+                  "type": "text"
+                }
+              ],
+              "index": 2
+            },
+            {
+              "bbox": [
+                52,
+                96,
+                176,
+                108
+              ],
+              "spans": [
+                {
+                  "bbox": [
+                    52,
+                    96,
+                    176,
+                    108
+                  ],
+                  "score": 1.0,
+                  "content": "but not those of 21 or 1375.",
+                  "type": "text"
+                }
+              ],
+              "index": 3
+            }
+          ],
+          "index": 2,
+          "bbox_fs": [
+            51,
+            67,
+            561,
+            108
+          ]
+        },
+        {
+          "type": "table",
+          "bbox": [
+            48,
+            120,
+            526,
+            399
+          ],
+          "blocks": [
+            {
+              "type": "table_body",
+              "bbox": [
+                48,
+                120,
+                526,
+                399
+              ],
+              "group_id": 0,
+              "lines": [
+                {
+                  "bbox": [
+                    48,
+                    120,
+                    526,
+                    399
+                  ],
+                  "spans": [
+                    {
+                      "bbox": [
+                        48,
+                        120,
+                        526,
+                        399
+                      ],
+                      "score": 0.461,
+                      "html": "<table><tr><td>def ordered_digits(x): &quot;&quot;&quot;Return True if the (base 10) digits of X&gt;0 are in non-decreasing</td></tr></table>",
+                      "type": "table",
+                      "image_path": "23b911171e23c7874f2e95a8fae2eec88ddd2f054f414ec0e8548254d68af0aa.jpg"
+                    }
+                  ]
+                }
+              ],
+              "index": 5,
+              "virtual_lines": [
+                {
+                  "bbox": [
+                    48,
+                    120,
+                    526,
+                    213.0
+                  ],
+                  "spans": [],
+                  "index": 4
+                },
+                {
+                  "bbox": [
+                    48,
+                    213.0,
+                    526,
+                    306.0
+                  ],
+                  "spans": [],
+                  "index": 5
+                },
+                {
+                  "bbox": [
+                    48,
+                    306.0,
+                    526,
+                    399.0
+                  ],
+                  "spans": [],
+                  "index": 6
+                }
+              ]
+            }
+          ],
+          "index": 5
+        }
+      ]
+    }
+  ],
+  "_backend": "pipeline",
+  "_version_name": "2.5.3"
+}
