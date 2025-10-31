@@ -1,0 +1,886 @@
+[
+  {
+    "index": 0,
+    "page_index": 0,
+    "block_type": "title",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          116,
+          154,
+          146
+        ],
+        "content": "While and If",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 1,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          150,
+          561,
+          222
+        ],
+        "content": "Learning to use if and while is an essential skill.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 2,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          150,
+          561,
+          222
+        ],
+        "content": "During this discussion, focus on what we’ve studied in the first three lectures: if, while, assignment ( = ) , comparison ( < , > , = = , \\ \\ldots ) , and arithmetic.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 3,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          150,
+          561,
+          222
+        ],
+        "content": "Please don’t use features of Python that we haven’t discussed in class yet, such as for, range, and lists.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 4,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          150,
+          561,
+          222
+        ],
+        "content": "We’ll have plenty of time for those later in the course, but now is the time to practice the use of if (textbook section 1.5.4) and while (textbook section 1.5.5).",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 5,
+    "page_index": 0,
+    "block_type": "title",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          235,
+          103,
+          250
+        ],
+        "content": "Q1: Race",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 6,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          255,
+          444,
+          269
+        ],
+        "content": "The race function below sometimes returns the wrong value and sometimes runs forever.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 7,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          285,
+          463,
+          342
+        ],
+        "content": "def race(x, y): \"\"\"The tortoise always walks x feet per minute, while the hare repeatedly runs y feet per minute for 5 minutes, then rests for 5 minutes.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 8,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          285,
+          463,
+          342
+        ],
+        "content": "Return how many minutes pass until the tortoise first catches up to the hare.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 9,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          69,
+          355,
+          437,
+          499
+        ],
+        "content": "> > > race(5, 7) # After 7 minutes, both have gone 35 steps 7 > > > race(2, 4) # After 10 minutes, both have gone 20 steps 10 \"\"\" assert \\texttt { y } > \\texttt { x } and \\texttt { y } < = \\texttt { 2 } * \\texttt { x } , 'the hare must be fast but not too fast' tortoise, hare, minutes \\qquad = \\ 0 , 0, 0 while minutes \\scriptstyle = = 0 or tortoise - hare: tortoise + = \\texttt { x } if minutes \\% 1 0 < 5 :",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 10,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          50,
+          498,
+          559,
+          630
+        ],
+        "content": "hare += y minutes += 1 return minutes Find positive integers \\mathtt { x } and \\mathtt { y } (with \\mathtt { y } larger than \\mathbf { x } but not larger than 2 \\texttt { * * } ) for which either: - race(x, y) returns the wrong value or - \\mathtt { r a c e ( x , \\ y ) } runs forever You just need to find one pair of numbers that satisfies either of these conditions to finish the question, but if you want to think of more you can.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 11,
+    "page_index": 0,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          637,
+          557,
+          663
+        ],
+        "content": "Notes: - \\texttt { x } + = \\texttt { 1 } is the same as \\textbf { z } = \\textbf { x } + \\textbf { 1 } when \\mathbf { x } is assigned to a number. - 0 is a false value and all other numbers are true values.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 12,
+    "page_index": 1,
+    "block_type": "title",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          46,
+          122,
+          60
+        ],
+        "content": "Q2: Fizzbuzz",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 13,
+    "page_index": 1,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          66,
+          557,
+          114
+        ],
+        "content": "Implement the classic F i z z B u z z sequence.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 14,
+    "page_index": 1,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          66,
+          557,
+          114
+        ],
+        "content": "The fizzbuzz function takes a positive integer \\mathbf { n } and prints out a single line for each integer from 1 to n.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 15,
+    "page_index": 1,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          66,
+          557,
+          114
+        ],
+        "content": "For each i: • If i is divisible by both 3 and 5, print fizzbuzz.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 16,
+    "page_index": 1,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          66,
+          115,
+          272,
+          129
+        ],
+        "content": "• If i is divisible by 3 (but not 5), print fizz.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 17,
+    "page_index": 1,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          66,
+          129,
+          272,
+          144
+        ],
+        "content": "• If i is divisible by 5 (but not 3), print buzz.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 18,
+    "page_index": 1,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          66,
+          144,
+          216,
+          158
+        ],
+        "content": "• Otherwise, print the number i.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 19,
+    "page_index": 1,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          165,
+          295,
+          179
+        ],
+        "content": "Try to make your implementation of fizzbuzz concise.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 20,
+    "page_index": 2,
+    "block_type": "title",
+    "spans": [
+      {
+        "bbox": [
+          50,
+          39,
+          182,
+          72
+        ],
+        "content": "Problem Solving",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 21,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          72,
+          561,
+          87
+        ],
+        "content": "A useful approach to implementing a function is to: 1.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 22,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          72,
+          561,
+          87
+        ],
+        "content": "Pick an example input and corresponding output. 2.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 23,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          87,
+          560,
+          164
+        ],
+        "content": "Describe a process (in English) that computes the output from the input using simple steps. 3.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 24,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          87,
+          560,
+          164
+        ],
+        "content": "Figure out what additional names you’ll need to carry out this process. 4.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 25,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          87,
+          560,
+          164
+        ],
+        "content": "Implement the process in code using those additional names. 5.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 26,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          87,
+          560,
+          164
+        ],
+        "content": "Determine whether the implementation really works on your original example. 6.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 27,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          87,
+          560,
+          164
+        ],
+        "content": "Determine whether the implementation really works on other examples. (If not, you might need to revise step 2.) Importantly, this approach doesn’t go straight from reading a question to writing code.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 28,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          172,
+          560,
+          184
+        ],
+        "content": "For example, in the is_prime problem below, you could: 1.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 29,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          172,
+          560,
+          184
+        ],
+        "content": "Pick n is 9 as the input and False as the output. 2.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 30,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          185,
+          560,
+          241
+        ],
+        "content": "Here’s a process: Check that 9 (n) is not a multiple of any integers between 1 and 9 (n). 3.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 31,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          185,
+          560,
+          241
+        ],
+        "content": "Introduce i to represent each number between 1 and 9 (n). 4.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 32,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          185,
+          560,
+          241
+        ],
+        "content": "Implement is_prime (you get to do this part with your group). 5.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 33,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          185,
+          560,
+          241
+        ],
+        "content": "Check that is_prime(9) will return False by thinking through the execution of the code. 6.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 34,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          185,
+          560,
+          241
+        ],
+        "content": "Check that is_prime(3) will return True and is_prime(1) will return False.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 35,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          248,
+          290,
+          263
+        ],
+        "content": "Try this approach together on the next two problems.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 36,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          268,
+          560,
+          326
+        ],
+        "content": "Important: It’s highly recommended that you don’t check your work using a computer right away.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 37,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          268,
+          560,
+          326
+        ],
+        "content": "Instead, talk to your group and think to try to figure out if an answer is correct.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 38,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          268,
+          560,
+          326
+        ],
+        "content": "On exams, you won’t be able to guess and check because you won’t have a Python interpreter.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 39,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          268,
+          560,
+          326
+        ],
+        "content": "Now is a great time to practice checking your work by thinking through examples.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 40,
+    "page_index": 2,
+    "block_type": "title",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          339,
+          126,
+          354
+        ],
+        "content": "Q3: Is Prime?",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 41,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          360,
+          481,
+          374
+        ],
+        "content": "Write a function that returns True if a positive integer n is a prime number and False otherwise.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 42,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          381,
+          558,
+          408
+        ],
+        "content": "A prime number n is a number that is not divisible by any numbers other than 1 and n itself.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 43,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          381,
+          558,
+          408
+        ],
+        "content": "For example, 13 is prime, since it is only divisible by 1 and 13, but 14 is not, since it is divisible by 1, 2, 7, and 14.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 44,
+    "page_index": 2,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          414,
+          376,
+          431
+        ],
+        "content": "Use the \\% operator: x % y returns the remainder of \\mathtt { x } when divided by y.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 45,
+    "page_index": 3,
+    "block_type": "title",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          45,
+          148,
+          60
+        ],
+        "content": "Q4: Unique Digits",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 46,
+    "page_index": 3,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          65,
+          399,
+          81
+        ],
+        "content": "Write a function that returns the number of unique digits in a positive integer.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 47,
+    "page_index": 3,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          75,
+          85,
+          532,
+          101
+        ],
+        "content": "Hints: You can use // and \\% to separate a positive integer into its one’s digit and the rest of its digits.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 48,
+    "page_index": 3,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          76,
+          107,
+          534,
+          135
+        ],
+        "content": "You may find it helpful to first define a function has_digit(n, k), which determines whether a number n has digit k.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 49,
+    "page_index": 4,
+    "block_type": "title",
+    "spans": [
+      {
+        "bbox": [
+          52,
+          45,
+          153,
+          62
+        ],
+        "content": "Q5: Ordered Digits",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 50,
+    "page_index": 4,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          67,
+          561,
+          108
+        ],
+        "content": "Implement the function ordered_digits, which takes as input a positive integer and returns True if its digits, read left to right, are in non-decreasing order, and False otherwise.",
+        "type": "text"
+      }
+    ]
+  },
+  {
+    "index": 51,
+    "page_index": 4,
+    "block_type": "text",
+    "spans": [
+      {
+        "bbox": [
+          51,
+          67,
+          561,
+          108
+        ],
+        "content": "For example, the digits of 5, 11, 127, 1357 are ordered, but not those of 21 or 1375.",
+        "type": "text"
+      }
+    ]
+  }
+]
