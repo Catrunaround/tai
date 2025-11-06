@@ -1,0 +1,388 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta name="description" content ="CS 61A: Structure and Interpretation of Computer Programs" />
+    <meta name="keywords" content ="Computer Science, Programming, Berkeley, EECS" />
+    <meta name="author" content ="John DeNero, Kay Ousterhout" />
+    <!-- CHANGED CAREFUL -->
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-throttle-debounce/1.1/jquery.ba-throttle-debounce.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script src="/assets/js/hl.js"></script>
+    <script src="/assets/js/toggledarkmode.js"></script>
+    <script>
+        // we aren't registering builtins since
+        //      (1) they don't render differently in the current CSS from other names
+        //      (2) it's a mess to list all of them. You can extract from the site but that takes effort
+        // if (1) ceases to be true, (2) might be worth the effort. For now, we're leaving as is
+        hljsRegister({
+            'keyword': "define if cond and or let begin lambda mu quote delay cons-stream set! quasiquote unquote unquote-splicing define-macro"
+        });
+        hljs.initHighlightingOnLoad();
+    </script>
+    <script src="/assets/js/dark-mode.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.3.7/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inconsolata|Roboto:300,400,500|Work+Sans:400,700">
+    <link rel="stylesheet" href="/assets/css/style.css">
+    <link rel="stylesheet" href="/assets/css/mono-blue.css">
+    <link rel="icon" href="/assets/images/favicon.ico">
+
+    
+
+<link href="/assets/css/project.css" rel="stylesheet" type="text/css">
+
+
+    <title>
+Optional Contest: Hog Strategy | CS 61A Fall 2025
+</title>
+  </head>
+
+  <body id="index" class="home">
+    <nav class="navbar navbar-default navbar-static-top">
+      <div class="container noselect">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-collapse-section" aria-label="Toggle Navigation Bar">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="/">
+            CS 61A
+            <!-- <img style="max-width:60px; margin-top: -20px;" class="logo" src="/assets/images/logo.png"/> -->
+          </a>
+        </div>
+
+        <div class="collapse navbar-collapse" id="navbar-collapse-section">
+          <ul class="nav navbar-nav navbar-right">
+
+            
+            <li><a href="/">Lectures</a></li>
+            
+            <li><a href="/articles/about-61a/">Syllabus</a></li>
+            
+            <li><a href="https://edstem.org/us/courses/82739/discussion">Ed</a></li>
+            
+            <li><a href="/office-hours/">Office Hours</a></li>
+            
+            <li><a href="/articles/contact-61a/">Contact</a></li>
+            
+
+            
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                Links
+                <span class="caret"></span>
+              </a>
+              <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                
+                <li><a href="https://go.cs61a.org/extensions">Request an Extension</a></li>
+                
+                <li><a href="https://go.cs61a.org/regrades">Request a Regrade</a></li>
+                
+                <li><a href="https://oh.cs61a.org/">Office Hours Queue</a></li>
+                
+                <li><a href="">Gradescope</a></li>
+                
+                <li><a href="https://sections.cs61a.org">Add/Change Sections</a></li>
+                
+                <li><a href="https://bcourses.berkeley.edu/courses/1547573/pages">Lecture Recordings</a></li>
+                
+                <li><a href="https://pythontutor.com/cp/composingprograms.html">Python Tutor</a></li>
+                
+                <li><a href="https://code.cs61a.org/">Code Editors</a></li>
+                
+              </ul>
+            </li>
+            
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                Resources
+                <span class="caret"></span>
+              </a>
+              <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                
+                <li><a href="/resources/">Past Exams & Websites</a></li>
+                
+                <li><a href="https://www.composingprograms.com">Textbook</a></li>
+                
+                <li><a href="/articles/campus-res/">Campus Resources</a></li>
+                
+                <li><a href="/articles/advice/">Advice from Students</a></li>
+                
+                <li><a href="/articles/scheme-spec/">Scheme Specifications</a></li>
+                
+                <li><a href="/articles/scheme-builtins/">Scheme Built-In Procedures</a></li>
+                
+              </ul>
+            </li>
+            
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                Guides
+                <span class="caret"></span>
+              </a>
+              <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                
+                <li><a href="https://drive.google.com/file/d/1O72u0ml65pibcjz-PXKpqeJDKaVqQ3D8/view">Debugging Guide</a></li>
+                
+                <li><a href="/articles/studying/">Studying Guide</a></li>
+                
+                <li><a href="/articles/type-hints/">Type Hints</a></li>
+                
+                <li><a href="/articles/composition/">Composition Guide</a></li>
+                
+                <li><a href="/assets/pdfs/61a-mt1-study-guide.pdf">MT1 Study Guide</a></li>
+                
+                <li><a href="/assets/pdfs/61a-mt2-study-guide.pdf">MT2 Study Guide</a></li>
+                
+                <li><a href="/assets/pdfs/61a-final-study-guide.pdf">Final Study Guide</a></li>
+                
+              </ul>
+            </li>
+            
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                Staff
+                <span class="caret"></span>
+              </a>
+              <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
+                
+                <li><a href="/instructor">Instructors</a></li>
+                
+                <li><a href="/staff">TAs & Tutors</a></li>
+                
+                <li><a href="/academic-interns">Academic Interns</a></li>
+                
+              </ul>
+            </li>
+            
+
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <main id="content" class="container">
+      
+<div class='row'>
+  <div class='col-md-9'>
+    <header>
+      <h1>
+        
+Optional Contest: Hog Strategy
+
+        
+        
+        <ul class="inline-block list-inline">
+          <li><a href="hog_contest.zip" class="label label-outline">hog_contest.zip</a></li>
+        </ul>
+        
+        
+      </h1>
+    </header>
+    
+<div class="haiku">
+  <blockquote><cite>
+A strategy is<br/>
+A single function that makes<br/>
+Ten thousand choices.
+</cite></blockquote>
+</div>
+
+    
+<h2 id="instructions">Instructions</h2>
+
+
+<blockquote><p>This contest is completely optional!</p></blockquote>
+
+<p>Download a blank <code>final_strategy.py</code> file and simple tests for correct
+formatting as a <a href="hog_contest.zip">zip archive</a>. Type <code>python3 ok</code> to run the provided tests.</p>
+
+<p>Submit a <code>final_strategy.py</code> file to Pensieve.</p>
+
+<p>The contest ends on <strong>Thursday, September 25 at 11:59 PM</strong>. We will use your latest
+submission before this date to determine the final results of the contest.</p>
+
+<p>Your strategy should not take more than about 5 minutes to run on a
+single-threaded machine with about 8GB of RAM. Specifically, the following loop
+should take no more than about 5 minutes:</p>
+
+<pre><code class="python">for i in range(300):
+    for j in range(300):
+        final_strategy(i, j)</code></pre>
+
+
+
+<p>Strategies that take significantly longer to run (such as 10+ minutes) or require special hardware (e.g. GPUs) to run fast will be disqualified.</p>
+
+<!-- ## Leaderboard
+
+The leaderboard can be found <a href="https://hog-contest.cs61a.org">here</a>. It will
+continuously update as the contest progresses. Go to the
+<a href="https://hog-contest.cs61a.org/log">server log</a> to see the status of your submission. -->
+
+
+<h2 id="contest-rules">Contest rules</h2>
+
+
+<p>Teams can have one or two people. Each person can only be part of one team.</p>
+
+<p>Each submitted strategy will play against all other submissions. The player to
+go first will be determined by a flip of a fair coin. We will exactly compute
+the expected win rate for each player, so that the outcome of this tournament
+will be determined by strategy alone and not the roll of the dice or flip of a
+coin. A submission scores a match point each time it has an expected win rate
+strictly above 50.0001%. We will rank submissions based on the number of matches
+they won. Ties count as losses.</p>
+
+<p>The top submission gets 2 points of extra credit!</p>
+
+<p>The next nine submissions get 1 point of extra credit.</p>
+
+<p><strong>Don't use AI.</strong> This contest, which is just for fun, is about human ingenuity.
+You may not use language models (ChatGPT, etc.) to generate any code related to
+this project, either for your final submission or during development. You may
+not use language models to suggest an approach. Try to come up with a solution
+yourself.</p>
+
+<p>Of course you can talk to other students and read articles online, but if there
+is some indication that some top-scoring submissions weren't created entirely by
+the participants but instead using a language model or by copying code found
+online, then all extra credit points for the contest will be cancelled. (Please
+try not to ruin the contest for yourself or others.)</p>
+
+<p>To discourage you from just hard-coding your program output in your submission, we have introduced a <strong>size penalty</strong> for large submissions. Specifically, your <code>goal</code> will not simply be <code>100</code>, but will instead depend on the size of the <code>final_strategy.py</code> file that you submit, according to the following function:</p>
+
+<pre><code class="python">def target_score(program_size_in_bytes):
+    scaled_score = program_size_in_bytes / 10000 * 300
+    return int(min(max(scaled_score, 50), 300))</code></pre>
+
+
+
+<p>All strategies must be deterministic, pure functions of the current player
+  scores. Non-deterministic strategies or strategies based on the history of the
+  game will not behave as expected when submitted and will likely not do well.</p>
+
+<p>Your <code>final_strategy.py</code> cannot depend on any external modules. Use the Python
+  standard library. You are welcome to use external modules during development,
+  but not in your final submission.</p>
+
+<p><strong>Update 9/24</strong>: You may import the <code>goal_scores</code> module now provided in the
+contest zip file to access <code>your_goal</code> and <code>opponent_goal</code> values that represent
+the goal scores of the two players based on the length of their strategy files.
+Since this module was added close to the contest deadline, the contest will be
+run twice: once with <code>opponent_goal</code> set to its actual value (so that players
+can use it) and once with it always set to <code>None</code> (so that players cannot use
+it). A top submission under either version of the contest counts as a top
+submission. Therefore, ignoring this update does not reduce your chances of
+winning.</p>
+
+<p>Happy coding!</p>
+
+  </div>
+
+  <div class='col-md-3 sticky'>
+    <nav class='hidden-print hidden-sm hidden-xs sidebar'>
+      <ul>
+  <li><a href="#instructions">Instructions</a></li>
+  <li><a href="#contest-rules">Contest rules</a></li>
+</ul>
+    </nav>
+  </div>
+</div>
+
+    </main>
+
+    <!-- <footer class="container">
+      <div class="row text-center">
+        <div class="col col-sm-4">
+          <h3><a href="/">CS 61A</a></h3>
+          <ul class="nav nav-pills nav-stacked">
+            <li><a href="/weekly">Weekly Schedule</a></li>
+            <li><a href="/office-hours">Office Hours</a></li>
+            <li><a href="/staff">Staff</a></li>
+          </ul>
+        </div>
+        <div class="col col-sm-4">
+          <h3><a href="/resources">Resources</a></h3>
+          <ul class="nav nav-pills nav-stacked">
+            <li><a href="/articles/studying">Studying Guide</a></li>
+            <li><a href="/articles/debugging">Debugging Guide</a></li>
+            <li><a href="/articles/composition">Composition Guide</a></li>
+            <li><a href="/articles/pair-programming">Pair Programming</a></li>
+          </ul>
+        </div>
+        <div class="col col-sm-4">
+          <h3><a href="/articles/about">Policies</a></h3>
+          <ul class="nav nav-pills nav-stacked">
+            <li><a href="/articles/about#assignments">Assignments</a></li>
+            <li><a href="/articles/about#exams">Exams</a></li>
+            <li><a href="/articles/about#grading">Grading</a></li>
+          </ul>
+        </div>
+      </div>
+    </footer> -->
+
+    
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs/loader.min.js"></script>
+  <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs/editor/editor.main.min.css">
+  <script>
+      require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs' }});
+      window.MonacoEnvironment = { getWorkerUrl: () => URL.createObjectURL(new Blob([`
+      self.MonacoEnvironment = {
+          baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min'
+      };
+      importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs/base/worker/workerMain.min.js');
+  `], { type: 'text/javascript' }))
+  };
+  </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsPlumb/2.15.5/js/jsplumb.min.js"></script>
+    <script src="/assets/js/network_storage.js"></script>
+    <script src="/assets/js/code_tabindex.js"></script>
+    <script src="/assets/js/storable.js"></script>
+    <script src="/assets/js/editor.js"></script>
+    <script src="/assets/js/copy-button.js"></script>
+    <script src="/assets/js/env-diagram.js"></script>
+    
+<!-- <script src="/assets/js/sketchy.js"></script> -->
+<script>
+  $('.sidebar ul').addClass('nav nav-stacked noselect');
+  $('body').scrollspy({
+    target: '.sidebar',
+    offset: 40
+  });
+
+  function goToId(id) {
+    var target = $(id);
+    target.parent().show();
+    $('html,body').animate({
+      scrollTop: target.offset().top,
+    }, 100);
+    $("body").scrollspy('refresh');
+  }
+
+  if (location.hash) {
+    setTimeout(function() {
+      if (location.hash) {
+        goToId(location.hash);
+      }
+    }, 1);
+  }
+
+  $("a").click(function(event) {
+    var urlBeforeHashRegEx = new RegExp("^"+window.location.href.split("#")[0]);
+    if (/^#/.test(this.hash) && urlBeforeHashRegEx.test(this.href)) {
+      event.preventDefault();
+      goToId(this.hash);
+      document.location.hash = this.hash;
+    }
+  });
+</script>
+
+  </body>
+</html>
