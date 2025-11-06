@@ -55,10 +55,24 @@ class VideoScraper(BaseScraper):
             print(f"Skipping {url}, unable to retrieve info.")
             return
         if video_info.get('_type') == 'playlist':
+            playlist_url = video_info.get('webpage_url')
             for entry in video_info['entries']:
                 video_url = entry.get('original_url', entry.get('url'))
+                playlist_index = entry.get('playlist_index')
                 filepath = f"{entry['requested_downloads'][0]['filepath']}"
-                self._save_metadata(filepath, video_url)
+
+                # Construct video-in-playlist URL
+                video_in_playlist_url = None
+                if playlist_url and playlist_index:
+                    # Extract playlist ID from playlist_url
+                    parsed_playlist = urlparse(playlist_url)
+                    playlist_params = parse_qs(parsed_playlist.query)
+
+                # Save metadata with all URLs
+                additional_metadata = {
+                    'playlist_url': playlist_url,
+                }
+                self._save_metadata(filepath, video_url, additional_metadata)
         else:
             # For single video
             video_url = video_info.get('original_url', video_info.get('url'))
