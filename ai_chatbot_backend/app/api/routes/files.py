@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.dbs.metadata_db import get_metadata_db
 from app.api.deps import verify_api_token
 from app.schemas.files import FileMetadata, FileListResponse, DirectoryBrowserResponse, TranscriptSegment
+from app.schemas.citations import FileSentenceMappingResponse
 from app.services.file_service import file_service
 
 router = APIRouter()
@@ -274,4 +275,69 @@ async def get_file_extra_info(
         logger.error(f"Raw extra_info: {file_record.extra_info[:500] if file_record.extra_info else None}")
         # Return empty array if parsing fails
         return []
+
+
+@router.get(
+    "/{file_id}/sentence_mapping",
+    response_model=FileSentenceMappingResponse,
+    summary="Get sentence-level mapping with bounding boxes for a file"
+)
+async def get_file_sentence_mapping(
+    file_id: UUID = Path(..., description="File UUID"),
+    db: Session = Depends(get_metadata_db),
+    _: bool = Depends(verify_api_token),
+):
+    """
+    Get sentence-level mapping with bounding box coordinates for a file.
+
+    This endpoint returns the sentence mapping stored in the file's extra_info,
+    which includes:
+    - Sentence content and position (index)
+    - Page index for each sentence
+    - Bounding box coordinates [x1, y1, x2, y2]
+    - Block type (text, title, etc.)
+
+    Useful for:
+    - Displaying precise citation locations in PDF viewers
+    - Highlighting specific sentences referenced in answers
+    - Building visual citation overlays
+
+    Returns empty sentence_mapping array if not available for this file.
+    """
+    logger.info(f"Getting sentence mapping for file_id: {file_id}")
+
+    file_record = file_service.get_file_by_id(db, file_id)
+    if not file_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File with ID {file_id} not found",
+        )
+
+    # Get sentence mapping from file model
+    from app.core.models.metadata import FileModel
+    file_model = db.query(FileModel).filter(FileModel.uuid == str(file_id)).first()
+
+    if not file_model:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File with ID {file_id} not found",
+        )
+
+    sentence_mapping = file_model.get_sentence_mapping()
+    has_mapping = sentence_mapping is not None and len(sentence_mapping) > 0
+
+    # Calculate total pages if mapping exists
+    total_pages = 0
+    if has_mapping:
+        total_pages = max(block.get("page_index", 0) for block in sentence_mapping) + 1
+
+    return FileSentenceMappingResponse(
+        file_uuid=str(file_id),
+        file_name=file_model.file_name,
+        file_path=file_model.relative_path,
+        has_sentence_mapping=has_mapping,
+        sentence_mapping=sentence_mapping,
+        total_blocks=len(sentence_mapping) if has_mapping else 0,
+        total_pages=total_pages
+    )
 
