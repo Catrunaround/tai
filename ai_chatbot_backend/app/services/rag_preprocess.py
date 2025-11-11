@@ -127,9 +127,11 @@ def build_augmented_prompt(
     # Create response and reference styles based on audio mode.
     if not audio_response:
         response_style = (
-            f"Answer the instruction thoroughly with a well-structured markdown format answer. "
+            f"Answer the instruction thoroughly with a well-structured markdown format answer (do not add '```markdown'). "
+            f"Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
             f"No references at the end."
         )
+        # "[Reference: a; Quote: 'xxx to xxx']"
         reference_style = (
             f"\nALWAYS: Refer to specific reference numbers inline using [Reference: a,b] style!!! Do not use other style like refs, 【】, Reference: [n], > *Reference: n*, [Reference: a-b]  or (reference n)!!!"
             f"\nDo not list references at the end. "
@@ -137,18 +139,19 @@ def build_augmented_prompt(
     else:
         response_style = """
         STYLE:
-        Use a clear, natural, speaker-friendly tone that is short and engaging. Try to end every sentence with a period '.'. ALWAYS: Avoid code block, Markdown formatting or math equation!!! No references at the end or listed withou telling usage.
-        Make the first sentence short and engaging. If no instruction is given, explain that you did not hear any instruction.
+        Use a speaker-friendly tone. Try to end every sentence with a period '.'. ALWAYS: Avoid code block, Markdown formatting or math equation!!! No references at the end or listed without telling usage.
+        Make the first sentence short and engaging. If no instruction is given, explain that you did not hear any instruction. Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. 
         Do not use symbols that are not readable in speech, such as (, ), [, ], {, }, <, >, *, #, -, !, $, %, ^, &, =, +, \, /, ~, `, etc. In this way, avoid code, Markdown formatting or math equation!!!
         """
         reference_style = (
             "\nREFERENCE USAGE:"
-            f"\nMention specific reference numbers inline when that part of the answer is refer to some reference. "
+            f"\nMention specific reference numbers inline when that part of the answer is refer to some reference. Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
             f"\nALWAYS: Do not mention references in a unreadable format like refs, 【】, Reference: [n], > *Reference: n* or (reference n)!!! Those are not understandable since the output is going to be converted to speech. "
-            f"\nGood example: According to reference 1, as mention in reference 2, etc. \n"
         )
     # Create modified message based on whether documents were inserted
+
     if not insert_document or n == 0:
+        print("[INFO] No relevant documents found above the similarity threshold.")
         system_add_message = (
             f"\n{response_style}"
             f"If the question is a complex question, provide hints, explanations, "
@@ -163,15 +166,24 @@ def build_augmented_prompt(
             f""
         )
     else:
+        print("[INFO] Relevant documents found and inserted into the prompt.")
         system_add_message =(
             f"\n{response_style}"
             f"Review the reference documents, considering their Directory Path (original file location), "
             f"Topic Path (section or title it belongs to), and Document content. "
-            f"Select only the most relevant references to answer the instruction thoroughly "
-            f"in a well-structured markdown format (do not add '```markdown'). "
-            f"Ground your answer in the facts from these selected references. "
-            f"If the question is a complex problem, provide hints, explanations, "
-            f"or step-by-step guidance instead of giving the direct answer. "
+            f"Select only the most relevant references to answer the instruction thoroughly. "
+            f"Role: adaptive and encouraging tutor using Bloom taxonomy and provided references, don't give out answer."
+            f"always praise curiosity + link to prior knowledge; explain only core ideas from refs with one"
+            f"Quickly identify goal = Understand / Apply–Analyze / Evaluate–Create."
+            f"If Understand → explanation + clear example; headlines and keep concise and clear"
+            f"then ask if the user wants more explanation, such as analogies, counterexamples, or deep exploration \n\n"
+            f"If Apply–Analyze → clarify what’s asked, what concepts and prereqs are involved; ask if they want hints "
+            f"or steps; wait for attempt; then outline step-by-step guidance using refs, no final answer.\n\n"
+            f"If Evaluate–Create → unpack the problem and key concepts; ask for their approach first; then guide "
+            f"reflection with criteria (correctness, completeness, trade-offs); compare views, note assumptions, "
+            f"outline structure if needed, never a full solution.\n\n"
+            f"always ground reasoning in the references and note how each supports the step."
+            f"Prefer hints and reflection; end each turn by inviting the next action."
             f"{reference_style}"
             f"Exclude and avoid explaining irrelevant references. "
             f"If, after reasonable effort, no relevant information is found, "
