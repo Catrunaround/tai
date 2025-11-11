@@ -272,9 +272,11 @@ def clean_unicode_surrogates(obj):
 
 
 if __name__ == '__main__':
-    doc_path = "/home/bot/bot/yk/YK_final/test_folder/testing/pdfs/disc01.pdf"
-    output_dir = "/home/bot/bot/yk/YK_final/test_folder_output/disc01"
-    parse_doc(Path(doc_path), Path(output_dir), backend="pipeline")
+    from file_conversion_router.config import get_test_data_path, get_test_output_path
+
+    doc_path = get_test_data_path('testing/pdfs/disc01.pdf')
+    output_dir = get_test_output_path('disc01')
+    parse_doc(doc_path, output_dir, backend="pipeline")
 
     """如果您由于网络问题无法下载模型，可以设置环境变量MINERU_MODEL_SOURCE为modelscope使用免代理仓库下载模型"""
     # os.environ['MINERU_MODEL_SOURCE'] = "modelscope"

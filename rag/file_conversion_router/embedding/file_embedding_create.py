@@ -106,13 +106,26 @@ def embed_files_from_markdown(
         
         # Initialize embedding model
         print(f"Loading embedding model: {embedding_model}")
-        model = SentenceTransformer(
-            embedding_model,
-            model_kwargs={
+
+        # Try to use FlashAttention2 if available, otherwise use default
+        try:
+            import flash_attn
+            model_kwargs = {
                 "attn_implementation": "flash_attention_2",
                 "torch_dtype": "auto",
                 "device_map": "auto",
-            },
+            }
+            print("Using FlashAttention2 for faster inference")
+        except ImportError:
+            model_kwargs = {
+                "torch_dtype": "auto",
+                "device_map": "auto",
+            }
+            print("FlashAttention2 not available, using default attention implementation")
+
+        model = SentenceTransformer(
+            embedding_model,
+            model_kwargs=model_kwargs,
             tokenizer_kwargs={"padding_side": "left"},
         )
         
@@ -130,11 +143,20 @@ def embed_files_from_markdown(
             course_code = file_record["course_code"] or ""
             
             # Construct markdown file path
-            # Assuming the markdown file has the same name but with .md extension
-            # and is in the same relative directory structure
+            # MinerU creates: input_dir/subdir/file.ext -> output_dir/subdir/file/file.ext.md
+            # Note: relative_path is stored relative to parent of input_dir, so first component needs stripping
             original_path = Path(relative_path)
-            markdown_file_name = original_path.name + ".md"
-            markdown_relative_path = original_path.parent /original_path.stem / markdown_file_name
+
+            # Strip first path component (the base directory name)
+            # relative_path is always "base_dir/subdir/file.ext" but output_dir already includes base_dir
+            path_parts = list(original_path.parts)
+            if len(path_parts) > 1:
+                working_path = Path(*path_parts[1:])
+            else:
+                working_path = original_path
+
+            markdown_file_name = working_path.name + ".md"
+            markdown_relative_path = working_path.parent / working_path.stem / markdown_file_name
             markdown_full_path = data_dir / markdown_relative_path
             
             # Try alternative markdown paths if the direct one doesn't exist
@@ -279,6 +301,9 @@ def check_embedding_status(db_path: str, course_filter: Optional[str] = None) ->
     """
     conn = sqlite3.connect(db_path)
     try:
+        # Ensure vector column exists before checking status
+        _ensure_vector_column(conn)
+
         params = []
         where_clause = ""
 
@@ -369,18 +394,17 @@ def check_embedding_status(db_path: str, course_filter: Optional[str] = None) ->
 
 
 if __name__ == "__main__":
-    # Example usage
-    db_path = "/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db"
-    data_dir = "/home/bot/bot/yk/YK_final/courses_out"
-    
+    COLLECTIVE_DB_PATH = "/home/bot/bot/yk/YK_final/courses_out/db/Berkeley_metadata.db"
+    COURSES_OUT_DIR = "/home/bot/bot/yk/YK_final/courses_out/Berkeley"
+
     # Check current status
-    status = check_embedding_status(db_path, course_filter=None)
+    status = check_embedding_status(COLLECTIVE_DB_PATH, course_filter=None)
     print("Current embedding status:", status)
     
     # Run embedding process
     results = embed_files_from_markdown(
-        db_path=db_path,
-        data_dir=data_dir,
+        db_path=COLLECTIVE_DB_PATH,
+        data_dir=COURSES_OUT_DIR,
         course_filter=None,  # Set to None to process all courses
         force_recompute=False  # Set to True to recompute existing embeddings
     )

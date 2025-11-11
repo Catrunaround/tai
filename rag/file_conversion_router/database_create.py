@@ -8,9 +8,10 @@ ingest.py  —  YAML ➜ flattened SQLite
 import json, uuid, yaml, sqlite3, pathlib
 from typing import List, Dict, Any
 import os
+from file_conversion_router.config import COURSES_DIR
 
 # ───────────────────────── helpers ────────────────────────────────────────────
-ROOT = pathlib.Path("/home/bot/bot/yk/YK_final/courses/CS 61A")
+ROOT = COURSES_DIR / "CS 61A"
 DB_PATH = ROOT / "metadata.db"
 
 

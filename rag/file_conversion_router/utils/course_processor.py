@@ -9,7 +9,9 @@ from .yaml_utils import load_yaml, save_yaml
 from file_conversion_router.services.directory_service import process_folder
 from .database_merger import merge_databases_by_list
 from file_conversion_router.embedding.embedding_create import embedding_create
-from file_conversion_router.embedding.file_embedding_create import embed_files_from_markdown
+from file_conversion_router.embedding.file_embedding_create import (
+    embed_files_from_markdown,
+)
 
 
 def convert_directory(input_config: Union[str, Path], auto_embed: bool = True) -> None:

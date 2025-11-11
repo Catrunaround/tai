@@ -8,7 +8,8 @@
       "Read(//home/bot/bot/yk/YK_final/tai/rag/**)",
       "Read(//home/bot/bot/yk/YK_final/tai/**)",
       "Read(//home/bot/bot/yk/YK_final/test_folder_output/disc01/**)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []

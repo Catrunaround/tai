@@ -202,12 +202,16 @@ def _merge_single_course_db(
                 update_time = file_row['update_time']
 
         # Build INSERT statement dynamically based on collective schema
-        base_columns = "uuid, file_hash, sections, relative_path, course_code, course_name, file_name, extra_info, url"
-        base_values = "?, ?, ?, ?, ?, ?, ?, ?, ?"
+        base_columns = "uuid, file_hash, sections, relative_path, course_code, course_name, file_name, description, extra_info, url"
+        base_values = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+
+        # Handle description field - may not exist in older databases
+        description_value = file_row['description'] if 'description' in source_keys else None
+
         base_params = [
             file_row['uuid'], file_row['file_hash'], file_row['sections'],
             file_row['relative_path'], file_row['course_code'], file_row['course_name'],
-            file_row['file_name'], file_row['extra_info'], file_row['url']
+            file_row['file_name'], description_value, file_row['extra_info'], file_row['url']
         ]
 
         if 'ingested_time' in collective_columns:
@@ -391,14 +395,17 @@ def split_course_from_collective(
             file_uuid = file_row['uuid']
 
             # Insert file into course database
+            # Handle description field - may not exist in older databases
+            description_value = file_row['description'] if 'description' in file_row.keys() else None
+
             course_conn.execute("""
                 INSERT OR REPLACE INTO file (uuid, file_hash, sections, relative_path,
-                                           course_code, course_name, file_name, extra_info, url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                           course_code, course_name, file_name, description, extra_info, url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 file_row['uuid'], file_row['file_hash'], file_row['sections'],
                 file_row['relative_path'], file_row['course_code'], file_row['course_name'],
-                file_row['file_name'], file_row['extra_info'], file_row['url']
+                file_row['file_name'], description_value, file_row['extra_info'], file_row['url']
             ))
             split_stats["files"] += 1
 
@@ -455,13 +462,15 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Example usage: merge specific databases by providing a list of paths
+    from file_conversion_router.config import DB_DIR, CONFIG_DIR
+
     merge_stats = merge_databases_by_list(
         course_db_paths=[
-            "/home/bot/bot/yk/YK_final/courses_out/db/CS 294-137_metadata.db",
-            "/home/bot/bot/yk/YK_final/courses_out/db/CS 61A_metadata.db",
-            "/home/bot/bot/yk/YK_final/courses_out/db/Berkeley_metadata.db",
-            "/home/bot/bot/yk/YK_final/courses_out/db/ROAR Academy_metadata.db"
+            str("/home/bot/bot/yk/YK_final/courses_out/db/Berkeley_metadata.db"),
+            str("/home/bot/bot/yk/YK_final/courses_out/db/CS 61A_metadata.db"),
+            str("/home/bot/bot/yk/YK_final/courses_out/db/CS 294-137_metadata.db"),
+            str("/home/bot/bot/yk/YK_final/courses_out/db/ROAR Academy_metadata.db")
         ],
-        collective_db_path="/home/bot/bot/yk/YK_final/course_yaml/collective_metadata.db"
+        collective_db_path=str("/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db")
     )
     logging.info(f"Merge statistics: {merge_stats}")

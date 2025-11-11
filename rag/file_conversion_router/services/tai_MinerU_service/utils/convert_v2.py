@@ -15,8 +15,11 @@ ocr = PaddleOCR(
     use_doc_unwarping=False,
     use_textline_orientation=False,
 ) # 更换 PP-OCRv5_server 模型
-result = ocr.predict("/home/bot/bot/yk/YK_final/test_folder/testing/pdfs/disc01.pdf")
+
+from file_conversion_router.config import get_test_data_path, get_test_output_path
+
+result = ocr.predict(str(get_test_data_path('testing/pdfs/disc01.pdf')))
 for res in result:
     res.print()
-    res.save_to_img(save_path= '/home/bot/bot/yk/YK_final/test_folder_output/disc01/image')
-    res.save_to_json(save_path= '/home/bot/bot/yk/YK_final/test_folder_output/disc01/json')
+    res.save_to_img(save_path=str(get_test_output_path('disc01/image')))
+    res.save_to_json(save_path=str(get_test_output_path('disc01/json')))

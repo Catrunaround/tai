@@ -1,7 +1,13 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Public API for the file conversion router module.
 
 This module provides a high-level interface for document conversion, embedding generation,
 and database management for the RAG pipeline.
+
+This file can be run as a script OR imported as a library:
+- Run as script: python -m file_conversion_router.api
+- Import as library: from file_conversion_router.api import convert_directory
 """
 
 import logging
@@ -528,21 +534,21 @@ if __name__ == "__main__":
 
     # Step 1: Convert and embed a single course
     # convert_directory(
-    #     "configs/CS61A_config.yaml",
-    #     auto_embed=True  
+    #     "/home/bot/bot/yk/YK_final/course_yaml/CS 61A_config.yaml",
+    #     auto_embed=True
     # )
 
-    # Step 2: Process all courses marked for update (batch)
+    # # Step 2: Process all courses marked for update (batch)
     # results = process_courses_from_master_config(auto_embed=True)
     # print(f"Processed courses: {results['courses_processed']}")
 
     # Step 3: Merge all courses into collective database
-    # results = merge_course_databases_with_stats(
-    #     exclude_test=True,      # Skip test/demo databases
-    #     check_embeddings=True   # Validates and fixes missing embeddings before merge
-    # )
-    # print(f"Merged {len(results['included_courses'])} courses")
-    # print(f"Embedding completeness: {results['embedding_stats']['overall']}")
+    results = merge_course_databases_with_stats(
+        exclude_test=True,      # Skip test/demo databases
+        check_embeddings=True   # Validates and fixes missing embeddings before merge
+    )
+    print(f"Merged {len(results['included_courses'])} courses")
+    print(f"Embedding completeness: {results['embedding_stats']['overall']}")
 
 
     # Create embeddings for existing course (if missing)
@@ -575,6 +581,6 @@ if __name__ == "__main__":
     # courses = get_courses_needing_update()
     # print(f"Courses needing update: {[c['name'] for c in courses]}")
 
-    logger.info("Starting batch processing with auto-embedding...")
-    results = process_courses_from_master_config(auto_embed=True)
-    logger.info(f"Batch processing completed: {results}")
+    # logger.info("Starting batch processing with auto-embedding...")
+    # results = process_courses_from_master_config(auto_embed=True)
+    # logger.info(f"Batch processing completed: {results}")
