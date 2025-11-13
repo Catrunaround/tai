@@ -394,8 +394,8 @@ def check_embedding_status(db_path: str, course_filter: Optional[str] = None) ->
 
 
 if __name__ == "__main__":
-    COLLECTIVE_DB_PATH = "/home/bot/bot/yk/YK_final/courses_out/db/Berkeley_metadata.db"
-    COURSES_OUT_DIR = "/home/bot/bot/yk/YK_final/courses_out/Berkeley"
+    COLLECTIVE_DB_PATH = "/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db"
+    COURSES_OUT_DIR = "/home/bot/bot/yk/YK_final/courses_out/ROAR Academy"
 
     # Check current status
     status = check_embedding_status(COLLECTIVE_DB_PATH, course_filter=None)

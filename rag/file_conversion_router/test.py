@@ -240,9 +240,12 @@ def get_course_db_stats(db_path: str) -> Dict[str, int]:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
+    # Import path configuration
+    from file_conversion_router.config import COURSES_DIR, TEST_FOLDER_DIR
+
     # Example usage
-    collective_db = "/home/bot/bot/yk/YK_final/courses/metadata (1).db"
-    output_directory = "/home/bot/bot/yk/YK_final/test_folder"
+    collective_db = str(COURSES_DIR / "metadata (1).db")
+    output_directory = str(TEST_FOLDER_DIR)
     course_name_mapping = {
         "CS 61A": "CS 61A_metadata.db",
         "CS 294-137": "CS 294-137_metadata.db",

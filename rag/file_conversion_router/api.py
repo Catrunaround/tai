@@ -533,22 +533,22 @@ if __name__ == "__main__":
     # ===== RECOMMENDED WORKFLOW =====
 
     # Step 1: Convert and embed a single course
-    # convert_directory(
-    #     "/home/bot/bot/yk/YK_final/course_yaml/CS 61A_config.yaml",
-    #     auto_embed=True
-    # )
+    convert_directory(
+        "/home/bot/bot/yk/YK_final/course_yaml/CS 61A_config.yaml",
+        auto_embed=True
+    )
 
     # # Step 2: Process all courses marked for update (batch)
     # results = process_courses_from_master_config(auto_embed=True)
     # print(f"Processed courses: {results['courses_processed']}")
 
     # Step 3: Merge all courses into collective database
-    results = merge_course_databases_with_stats(
-        exclude_test=True,      # Skip test/demo databases
-        check_embeddings=True   # Validates and fixes missing embeddings before merge
-    )
-    print(f"Merged {len(results['included_courses'])} courses")
-    print(f"Embedding completeness: {results['embedding_stats']['overall']}")
+    # results = merge_course_databases_with_stats(
+    #     exclude_test=True,      # Skip test/demo databases
+    #     check_embeddings=True   # Validates and fixes missing embeddings before merge
+    # )
+    # print(f"Merged {len(results['included_courses'])} courses")
+    # print(f"Embedding completeness: {results['embedding_stats']['overall']}")
 
 
     # Create embeddings for existing course (if missing)

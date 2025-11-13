@@ -24,6 +24,31 @@ from loguru import logger
 # Configuration & Constants
 # ========================
 
+# Standard .env file location for RAG component
+RAG_ENV_PATH = Path(__file__).parent.parent.parent / ".env"
+
+
+def get_openai_api_key() -> Optional[str]:
+    """
+    Get OpenAI API key from the RAG component's .env file.
+
+    Returns:
+        The API key string if found, None otherwise.
+    """
+    # Try loading from the standard RAG .env location
+    if RAG_ENV_PATH.exists():
+        load_dotenv(dotenv_path=RAG_ENV_PATH, override=True)
+    else:
+        # Fallback to default load_dotenv behavior
+        load_dotenv(override=True)
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if api_key and api_key.strip():
+        return api_key.strip()
+
+    return None
+
 class SpeakerRole(Enum):
     """Enum for standardized speaker roles."""
     PROFESSOR = "Professor"
@@ -60,17 +85,49 @@ class QuestionConfig:
 class OpenAIClientWrapper:
     """Wrapper for OpenAI API interactions."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize OpenAI client with API key."""
+    def __init__(self, api_key: Optional[str] = None, lazy_init: bool = False):
+        """Initialize OpenAI client with API key.
+
+        Args:
+            api_key: Optional API key to use
+            lazy_init: If True, delay initialization until first use
+        """
+        self._api_key = api_key
+        self._client = None
+        self._config = None
+        self._lazy_init = lazy_init
+
+        if not lazy_init:
+            self._initialize()
+
+    def _initialize(self):
+        """Initialize the OpenAI client."""
+        if self._client is not None:
+            return
+
+        api_key = self._api_key
         if api_key is None:
-            load_dotenv()
-            api_key = os.getenv("OPENAI_API_KEY")
+            api_key = get_openai_api_key()
 
         if not api_key:
             raise ValueError("OpenAI API key not found in environment variables")
 
-        self.client = OpenAI(api_key=api_key)
-        self.config = ProcessingConfig()
+        self._client = OpenAI(api_key=api_key)
+        self._config = ProcessingConfig()
+
+    @property
+    def client(self):
+        """Get the OpenAI client, initializing if necessary."""
+        if self._client is None:
+            self._initialize()
+        return self._client
+
+    @property
+    def config(self):
+        """Get the processing config, initializing if necessary."""
+        if self._config is None:
+            self._initialize()
+        return self._config
 
     def create_completion(
         self,
@@ -149,20 +206,23 @@ class SchemaFactory:
             "additionalProperties": False
         }
 
-    def _create_content_coverage_schema(self) -> Dict[str, Any]:
-        """Create schema for content coverage."""
+    def _create_aspects_schema(self) -> Dict[str, Any]:
+        """Create schema for key concept aspects - multiple analytical perspectives."""
         return {
             "type": "array",
-            "description": "List only the aspects that the section actually explained",
+            "description": "Multiple detailed analytical descriptions of the key concept from different perspectives",
             "items": {
                 "type": "object",
                 "properties": {
                     "aspect": {
                         "type": "string",
                         "minLength": 1,
-                        "description": "The type of information"
+                        "description": "The type of analysis (e.g., definition, example, use case, implication)"
                     },
-                    "content": {"type": "string"}
+                    "content": {
+                        "type": "string",
+                        "description": "Detailed description analyzing the key concept from this perspective"
+                    }
                 },
                 "required": ["aspect", "content"],
                 "additionalProperties": False
@@ -255,11 +315,15 @@ class SchemaFactory:
                 "schema": {
                     "type": "object",
                     "properties": {
+                        "file_description": {
+                            "type": "string",
+                            "description": "A short summary describing the file type and key content (e.g., 'A lecture recording for recursion, it mentioned base cases and tree structures')"
+                        },
                         "key_concepts": self._create_key_concepts_schema(title_list),
                         "problems": self._create_problems_schema(),
                         "recap_questions": self._create_recap_question_schema()
                     },
-                    "required": ["key_concepts", "problems", "recap_questions"],
+                    "required": ["file_description", "key_concepts", "problems", "recap_questions"],
                     "additionalProperties": False
                 }
             }
@@ -272,18 +336,21 @@ class SchemaFactory:
             "items": {
                 "type": "object",
                 "properties": {
-                    "concepts": {"type": "string"},
+                    "concept": {
+                        "type": "string",
+                        "description": "Short keyword phrase or level-1 section title"
+                    },
                     "source_section_title": {
                         "type": "string",
                         "enum": title_list,
-                        "description": "The exact title from title_list"
+                        "description": "The exact title from title_list where this concept was mentioned"
                     },
-                    "check_in_question": self._create_check_in_question_schema(),
-                    "content_coverage": self._create_content_coverage_schema()
+                    "aspects": self._create_aspects_schema(),
+                    "check_in_question": self._create_check_in_question_schema()
                 },
                 "required": [
-                    "concepts", "source_section_title",
-                    "check_in_question", "content_coverage"
+                    "concept", "source_section_title",
+                    "aspects", "check_in_question"
                 ],
                 "additionalProperties": False
             }
@@ -355,6 +422,10 @@ class SchemaFactory:
     ) -> Dict[str, Any]:
         """Create schema for content without titles."""
         schema_properties = {
+            "file_description": {
+                "type": "string",
+                "description": "A short summary describing the file type and key content (e.g., 'A lecture recording for recursion, it mentioned base cases and tree structures')"
+            },
             "paragraphs": self._create_paragraphs_schema(paragraph_count),
             "key_concepts": self._create_generic_key_concepts_schema(),
             "recap_questions": self._create_recap_question_schema(),
@@ -428,14 +499,20 @@ class SchemaFactory:
             "items": {
                 "type": "object",
                 "properties": {
-                    "concepts": {"type": "string"},
-                    "source_section_title": {"type": "string"},
-                    "check_in_question": self._create_check_in_question_schema(),
-                    "content_coverage": self._create_content_coverage_schema()
+                    "concept": {
+                        "type": "string",
+                        "description": "Short keyword phrase or level-1 section title"
+                    },
+                    "source_section_title": {
+                        "type": "string",
+                        "description": "The title where this concept was mentioned"
+                    },
+                    "aspects": self._create_aspects_schema(),
+                    "check_in_question": self._create_check_in_question_schema()
                 },
                 "required": [
-                    "concepts", "source_section_title",
-                    "check_in_question", "content_coverage"
+                    "concept", "source_section_title",
+                    "aspects", "check_in_question"
                 ],
                 "additionalProperties": False
             }
@@ -451,6 +528,10 @@ class SchemaFactory:
                 "schema": {
                     "type": "object",
                     "properties": {
+                        "file_description": {
+                            "type": "string",
+                            "description": "A short summary describing the file type and key content (e.g., 'A lecture recording for recursion, it mentioned base cases and tree structures')"
+                        },
                         "titles_with_levels": {
                             "type": "array",
                             "description": "Titles with their hierarchical levels",
@@ -474,7 +555,7 @@ class SchemaFactory:
                         "key_concepts": self._create_key_concepts_schema(title_list),
                         "recap_questions": self._create_recap_question_schema()
                     },
-                    "required": ["titles_with_levels", "key_concepts", "recap_questions"],
+                    "required": ["file_description", "titles_with_levels", "key_concepts", "recap_questions"],
                     "additionalProperties": False
                 }
             }
@@ -895,8 +976,28 @@ class TranscriptManager:
             current_group = None
 
             for entry in transcript_data:
-                start_time = float(entry.get("start time", 0))
-                end_time = float(entry.get("end time", 0))
+                # Null-safety: Skip entries with invalid timestamps
+                start_time_raw = entry.get("start time")
+                end_time_raw = entry.get("end time")
+
+                if start_time_raw is None or end_time_raw is None:
+                    logger.warning(
+                        f"Skipping transcript entry with null timestamp: "
+                        f"start={start_time_raw}, end={end_time_raw}, "
+                        f"speaker={entry.get('speaker', 'N/A')}"
+                    )
+                    continue
+
+                try:
+                    start_time = float(start_time_raw)
+                    end_time = float(end_time_raw)
+                except (TypeError, ValueError) as e:
+                    logger.warning(
+                        f"Skipping transcript entry with invalid timestamp: {e}, "
+                        f"start={start_time_raw}, end={end_time_raw}"
+                    )
+                    continue
+
                 speaker = entry.get("speaker", "")
                 text_content = entry.get("text content", "").strip()
 
@@ -1015,6 +1116,10 @@ class PromptBuilder:
             You will be given markdown content from a video in the course "{course_name}", from the file "{file_name}".
             Your task is to perform the following actions and format the output as a single JSON object:
 
+            ### Part 0: Generate File Description
+            Provide a 1-2 sentence summary describing what type of file this is and what key topics/concepts it covers.
+            Example: "A lecture recording for recursion, it mentioned base cases, recursive calls, and tree structures."
+
             ### Part 1: Extract Key Concepts
             Your goal is to create a high-level summary of the entire document by identifying a small, curated set of its most important concepts.
 
@@ -1022,9 +1127,10 @@ class PromptBuilder:
             1. **Strict One-to-One Mapping:** Each Source Section title MUST map to exactly ONE Key Concept.
             2. **Limited Quantity:** Aggressively merge and consolidate topics. The final count must always be less than {self.config.max_key_concepts}.
             3. **No Hierarchical Overlap:** Cannot choose both a main section and its sub-section.
-            4. **Concise Concepts:** Single, descriptive sentence capturing the main idea.
-            5. **Preserve Original Order:** Maintain the sequence as in the original markdown.
-            6. **Generate Follow-up Check-in Question:** Create challenging questions requiring application/analysis/synthesis.
+            4. **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
+            5. **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            6. **Preserve Original Order:** Maintain the sequence as in the original markdown.
+            7. **Generate Follow-up Check-in Question:** Create challenging questions requiring application/analysis/synthesis.
 
             ### Part 2: Extract and Create Problems
             If you find blocks named Exercise or Challenge, create educational problems that test understanding.
@@ -1067,6 +1173,10 @@ class PromptBuilder:
             f"""You are an expert AI assistant specializing in analyzing and structuring educational material.
             You will be given markdown content from a video in the course "{course_name}", from the file "{file_name}".
 
+            ### Part 0: Generate File Description
+            Provide a 1-2 sentence summary describing what type of file this is and what key topics/concepts it covers.
+            Example: "A lecture recording for recursion, it mentioned base cases, recursive calls, and tree structures."
+
             ### Part 1: Structure the Content
             1. **Group into Sections:** Divide the text into 3-{self.config.max_sections} logical sections.
             2. **Generate Titles:** Create concise, descriptive titles for sections and paragraphs.
@@ -1074,7 +1184,11 @@ class PromptBuilder:
 
             ### Part 2: Extract Key Concepts
             Based on sections from Part 1, distill core learning points with assessment questions.
-            Follow the same constraints as the standard key concept extraction.
+
+            CRITICAL CONSTRAINTS:
+            - **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
+            - **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            - Follow the same constraints as the standard key concept extraction.
 
             ### Part 3: Generate Recap Questions
             Create up to {self.config.max_recap_questions} meaningful recap questions for review.
@@ -1097,12 +1211,20 @@ class PromptBuilder:
             f"""You are an expert AI assistant specializing in analyzing and structuring educational material.
             You will be given markdown content from a video in the course "{course_name}", from the file "{file_name}".
 
+            ### Part 0: Generate File Description
+            Provide a 1-2 sentence summary describing what type of file this is and what key topics/concepts it covers.
+            Example: "A lecture recording for recursion, it mentioned base cases, recursive calls, and tree structures."
+
             ### Part 1: Structure the Content
             **Generate Titles:** Create one concise, descriptive title for each paragraph.
 
             ### Part 2: Extract Key Concepts
             Distill core learning points from paragraphs with assessment questions.
-            Maximum {self.config.max_key_concepts} concepts, following standard constraints.
+
+            CRITICAL CONSTRAINTS:
+            - **Concise Concepts:** Short keyword phrases or level-1 section titles (e.g., 'conda activate yk_env', 'recursion tree'). NOT full sentences.
+            - **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            - Maximum {self.config.max_key_concepts} concepts, following standard constraints.
 
             ### Part 3: Generate Recap Questions
             Create up to {self.config.max_recap_questions} meaningful recap questions.
@@ -1117,12 +1239,16 @@ class PromptBuilder:
         self,
         course_name: str,
         file_name: str,
-        title_list: List[str]  # noqa: ARG002
+        title_list: List[str],
     ) -> str:
         """Build prompt for content with one title level."""
         return dedent(
             f"""You are an expert AI assistant for structuring educational material.
             You will be given markdown content from the file "{file_name}" for the course "{course_name}".
+
+            ### Part 0: Generate File Description
+            Provide a 1-2 sentence summary describing what type of file this is and what key topics/concepts it covers.
+            Example: "A lecture recording for recursion, it mentioned base cases, recursive calls, and tree structures."
 
             ### Part 1: Adjust Title Hierarchy Levels
             Given the title list, determine correct semantic hierarchy levels based on logical relationships.
@@ -1135,7 +1261,11 @@ class PromptBuilder:
 
             ### Part 2: Extract High-Level Key Concepts
             Create a high-level summary with {self.config.max_key_concepts} or fewer key concepts.
-            Follow standard key concept extraction constraints.
+
+            CRITICAL CONSTRAINTS:
+            - **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
+            - **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            - Follow standard key concept extraction constraints.
 
             ### Part 3: Generate Recap Questions
             Create up to {self.config.max_recap_questions} meaningful recap questions.
@@ -1149,13 +1279,18 @@ class PromptBuilder:
             f"""Extract High-Level Key Concepts for Overview
             Your goal is to create a high-level summary by identifying the most important concepts.
 
+            ### Generate File Description
+            Provide a 1-2 sentence summary describing what type of file this is and what key topics/concepts it covers.
+            Example: "A lecture recording for recursion, it mentioned base cases, recursive calls, and tree structures."
+
             CRITICAL CONSTRAINTS:
             1. **Strict One-to-One Mapping:** Each Source Section maps to exactly ONE Key Concept
             2. **Limited Quantity:** Maximum {self.config.max_key_concepts} concepts
             3. **No Hierarchical Overlap:** Cannot choose both main and sub-sections
-            4. **Concise Concepts:** Single, descriptive sentences
-            5. **Preserve Original Order:** Maintain source document sequence
-            6. **Generate Check-in Questions:** Create challenging assessment questions
+            4. **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
+            5. **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            6. **Preserve Original Order:** Maintain source document sequence
+            7. **Generate Check-in Questions:** Create challenging assessment questions
 
             ### Generate Comprehensive Recap Questions
             Create up to {self.config.max_recap_questions} meaningful recap questions for review.
@@ -1177,10 +1312,22 @@ class PromptBuilder:
 class TitleHandler:
     """Main orchestrator for title and content handling."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize title handler with all components."""
+    def __init__(self, api_key: Optional[str] = None, use_openai: bool = True):
+        """Initialize title handler with all components.
+
+        Args:
+            api_key: Optional OpenAI API key
+            use_openai: Whether to use OpenAI (default True for backward compatibility)
+        """
         self.config = ProcessingConfig()
-        self.openai_client = OpenAIClientWrapper(api_key)
+        self.use_openai = use_openai
+
+        # Only initialize OpenAI if needed
+        if use_openai:
+            self.openai_client = OpenAIClientWrapper(api_key, lazy_init=True)
+        else:
+            self.openai_client = None
+
         self.schema_factory = SchemaFactory(self.config)
         self.content_processor = ContentProcessor(self.config)
         self.speaker_processor = SpeakerProcessor()
@@ -1285,12 +1432,31 @@ class TitleHandler:
         """Extract only key concepts from content."""
         title_list = self._prepare_title_list(index_helper) or self.content_processor.extract_titles(md_content)
 
+        # Check if OpenAI is available
+        if not self.use_openai or self.openai_client is None:
+            logger.warning("OpenAI is not available. Returning empty key concepts structure.")
+            return {
+                "file_description": "",
+                "titles_with_levels": [{"title": title, "level_of_title": 1} for title in title_list],
+                "key_concepts": [],
+                "recap_questions": []
+            }
+
         # Build prompt and schema
         prompt = self.prompt_builder.build_key_concepts_only_prompt()
         schema = self.schema_factory.create_one_title_level_schema(title_list)
 
         # Get response from OpenAI
-        content_dict = self.openai_client.create_completion(prompt, md_content, schema)
+        try:
+            content_dict = self.openai_client.create_completion(prompt, md_content, schema)
+        except ValueError as e:
+            logger.warning(f"OpenAI API error: {e}. Returning empty key concepts structure.")
+            return {
+                "file_description": "",
+                "titles_with_levels": [{"title": title, "level_of_title": 1} for title in title_list],
+                "key_concepts": [],
+                "recap_questions": []
+            }
 
         return content_dict
 
@@ -1393,8 +1559,13 @@ def get_only_key_concepts(
     Extract only key concepts from markdown content.
 
     This is a simplified function that focuses on key concept extraction.
+    If OpenAI API key is not available, returns empty structure.
     """
-    handler = TitleHandler()
+    # Check if OpenAI API key is available using stable function
+    api_key = get_openai_api_key()
+    use_openai = api_key is not None
+
+    handler = TitleHandler(use_openai=use_openai)
     return handler.extract_key_concepts_only(md_content, index_helper)
 
 

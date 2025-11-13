@@ -26,6 +26,11 @@ from file_conversion_router.classes.chunk import Chunk
 import hashlib
 import json
 from typing import Dict, Any
+from file_conversion_router.services.sentence_mapping_service import (
+    generate_sentence_mapping_from_json,
+    update_file_extra_info_with_mapping,
+    generate_lines_json_from_middle_json
+)
 
 
 ConverterMapping = Dict[str, Type[BaseConverter]]
@@ -77,7 +82,7 @@ def process_folder(
 
     valid_extensions = tuple(converter_mapping.keys())
 
-    ignore_file = '../file_conversion_router/services/.conversionignore'
+    ignore_file = Path(__file__).parent / '.conversionignore'
     patterns = _load_patterns(ignore_file)
     spec = PathSpec.from_lines("gitwildmatch", patterns)
 
@@ -120,9 +125,17 @@ def process_folder(
 
         file_uuid = deterministic_file_uuid(fhash)
         converter = converter_class(course_name, course_code, file_uuid)
-        (chunks, metadata), _ = converter.convert(input_file_path, output_file_path, input_dir.parent)
-        if not chunks:
-            chunks = []
+
+        try:
+            (chunks, metadata), _ = converter.convert(input_file_path, output_file_path, input_dir.parent)
+            if not chunks:
+                chunks = []
+        except Exception as e:
+            # Conversion failed (e.g., OpenAI validation errors after retries)
+            # Skip this file and continue with the next one
+            logging.error(f"Failed to convert {input_file_path}: {type(e).__name__} - {str(e)[:200]}")
+            logging.info(f"Skipping file and continuing with next file...")
+            continue
 
         fp = chunks[0].file_path if chunks and getattr(chunks[0], "file_path", None) else input_file_path.relative_to(input_dir.parent)
         relative_path = str(fp)
@@ -130,11 +143,13 @@ def process_folder(
         # sections from metadata if provided
         sections = []
         url = ""
+        description = ""
         recap_questions = []
         if isinstance(metadata, dict):
             sections = metadata.get("sections", []) or []
             recap_questions = metadata.get("recap_questions", [])
             url = metadata.get("URL", "")
+            description = metadata.get("file_description", "")
 
         # read extra info from json file if present
         extra_info = []
@@ -155,9 +170,38 @@ def process_folder(
             course_code=course_code,
             course_name=course_name,
             sections=sections,
+            file_description=description,
             extra_info=extra_info,
             url=url,
         )
+
+        # Process sentence mapping for PDF files
+        if input_file_path.suffix == ".pdf":
+            try:
+                # Check if MinerU generated _middle.json
+                middle_json_path = output_file_path / f"{input_file_path.name}_middle.json"
+
+                if middle_json_path.exists():
+                    # Generate _lines.json from _middle.json
+                    lines_json_path = output_file_path / f"{input_file_path.name}_lines.json"
+
+                    if generate_lines_json_from_middle_json(str(middle_json_path), str(lines_json_path)):
+                        # Load sentence mapping from _lines.json
+                        sentence_mapping = generate_sentence_mapping_from_json(str(lines_json_path))
+
+                        if sentence_mapping:
+                            # Update database with sentence mapping
+                            update_file_extra_info_with_mapping(conn, file_uuid_written, sentence_mapping)
+                            logging.info(f"Added sentence mapping with {len(sentence_mapping)} sentences for {input_file_path.name}")
+                        else:
+                            logging.warning(f"No sentence mapping generated for {input_file_path.name}")
+                    else:
+                        logging.warning(f"Failed to generate lines JSON for {input_file_path.name}")
+                else:
+                    logging.debug(f"No middle JSON found for {input_file_path.name}, skipping sentence mapping")
+            except Exception as e:
+                logging.error(f"Error processing sentence mapping for {input_file_path.name}: {e}")
+                # Continue processing - don't break the pipeline
 
         # upsert problems if present
         if isinstance(metadata, dict):
@@ -292,7 +336,7 @@ def ensure_chunk_db(database_path) -> sqlite3.Connection:
 def upsert_file_meta(conn: sqlite3.Connection, f: dict):
     """
     Upsert into `file` using uuid as the conflict key.
-    Expects keys: uuid, file_hash, sections, relative_path, course_code, course_name, file_name
+    Expects keys: uuid, file_hash, sections, relative_path, course_code, course_name, file_name, description
     Optional keys: created_at (if not provided, uses current time via COALESCE)
     """
     args = (
@@ -303,6 +347,7 @@ def upsert_file_meta(conn: sqlite3.Connection, f: dict):
         f.get("course_code", ""),
         f.get("course_name"),
         f.get("file_name"),
+        f.get("description", ""),  # Fixed: changed from "file_description" to "description"
         json.dumps(f.get("extra_info", {}), ensure_ascii=False) if f.get("extra_info") else None,
         f.get("url"),
         f.get("created_at"),  # Pass created_at if available, otherwise None (COALESCE will use current time)
@@ -418,6 +463,7 @@ def write_chunks_to_db(conn: sqlite3.Connection,
                        course_code: str | None = None,
                        course_name: str | None = None,
                        sections: list | str | None = None,
+                       file_description: str = None,
                        extra_info: list = None,
                        url: str = None,) -> str:
     """
@@ -454,6 +500,7 @@ def write_chunks_to_db(conn: sqlite3.Connection,
         "course_code": course_code or "",
         "course_name": course_name or "",
         "file_name": file_name,
+        "description": file_description or "",
         "extra_info": extra_info,
         "url": url or "",
     })
@@ -556,6 +603,7 @@ CREATE TABLE IF NOT EXISTS file (
   course_code  TEXT,
   course_name  TEXT,
   file_name    TEXT,
+  description  TEXT,
   extra_info   TEXT,
   url          TEXT,
   vector       BLOB,
@@ -595,8 +643,8 @@ CREATE TABLE IF NOT EXISTS problem (
 );
 """
 SQL_UPSERT_FILE = """
-INSERT INTO file (uuid, file_hash, sections, relative_path, course_code, course_name, file_name, extra_info, url, created_at, update_time)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')), datetime('now', 'localtime'))
+INSERT INTO file (uuid, file_hash, sections, relative_path, course_code, course_name, file_name, description, extra_info, url, created_at, update_time)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')), datetime('now', 'localtime'))
 ON CONFLICT(uuid) DO UPDATE SET
   file_hash     = excluded.file_hash,
   sections      = excluded.sections,
@@ -604,6 +652,7 @@ ON CONFLICT(uuid) DO UPDATE SET
   course_code   = excluded.course_code,
   course_name   = excluded.course_name,
   file_name     = excluded.file_name,
+  description   = excluded.description,
   extra_info    = excluded.extra_info,
   url           = excluded.url,
   update_time   = datetime('now', 'localtime');

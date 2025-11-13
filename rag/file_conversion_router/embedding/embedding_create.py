@@ -160,10 +160,10 @@ if __name__ == "__main__":
     #     str(COLLECTIVE_DB_PATH),
     #     "CS 61A",
     # )
-    embedding_create(
-        str(COLLECTIVE_DB_PATH),
-        "ROAR Academy",
-    )
+    # embedding_create(
+    #     str(COLLECTIVE_DB_PATH),
+    #     "ROAR Academy",
+    # )
     embedding_create(
         str(COLLECTIVE_DB_PATH),
         "Berkeley",
@@ -172,3 +172,4 @@ if __name__ == "__main__":
         str(COLLECTIVE_DB_PATH),
         "CS 294-137",
     )
+#
