@@ -11,6 +11,10 @@ from vllm import SamplingParams
 from app.core.models.chat_completion import Message, UserFocus
 from app.services.rag_preprocess import build_retrieval_query, build_augmented_prompt, build_file_augmented_context
 from app.services.sentence_citation_service import SentenceCitationService
+from app.services.citation_enhancement import (
+    enhance_citations_with_metadata,
+    parse_llm_citation_response
+)
 # Environment Variables
 # TOKENIZER_MODEL_ID = "THUDM/GLM-4-9B-0414"
 from app.dependencies.model import LLM_MODEL_ID
@@ -177,6 +181,85 @@ def enhance_references_with_sentence_citations(
         })
 
     return answer, enhanced
+
+
+def enhance_references_v2(
+    response_text: str,
+    reference_list: List[List]
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Enhanced version using reference numbers from LLM response.
+
+    This is the newer approach that uses reference numbers from the LLM's
+    structured JSON output to map citations directly to file_uuid.
+
+    Args:
+        response_text: Full LLM response containing JSON with mentioned_contexts
+        reference_list: Reference list [[topic_path, url, file_path, file_uuid, chunk_index], ...]
+
+    Returns:
+        Tuple of (answer_text, enhanced_reference_list)
+        enhanced_reference_list contains dicts with:
+            - topic_path, url, file_path, file_uuid, chunk_index
+            - sentences: List of dicts with content, page_index, bbox, confidence
+
+    Example:
+        >>> response = '{"answer": "...", "mentioned_contexts": [{"reference": 1, ...}]}'
+        >>> answer, refs = enhance_references_v2(response, reference_list)
+        >>> refs[0]['sentences'][0]['page_index']  # Has page_index!
+        2
+    """
+    # Parse LLM response to extract answer and mentioned contexts
+    answer, mentioned_contexts = parse_llm_citation_response(response_text)
+
+    # If no mentioned contexts, return basic reference format
+    if not mentioned_contexts:
+        enhanced = []
+        for ref in reference_list:
+            enhanced.append({
+                "topic_path": ref[0],
+                "url": ref[1],
+                "file_path": ref[2],
+                "file_uuid": ref[3],
+                "chunk_index": ref[4],
+                "sentences": None
+            })
+        return answer, enhanced
+
+    # Enhance citations with file metadata and sentence positions
+    enhanced_refs = enhance_citations_with_metadata(
+        mentioned_contexts,
+        reference_list
+    )
+
+    # Convert EnhancedReference objects to dicts
+    enhanced_dicts = []
+    for ref in enhanced_refs:
+        ref_dict = {
+            "topic_path": ref.topic_path,
+            "url": ref.url,
+            "file_path": ref.file_path,
+            "file_uuid": ref.file_uuid,
+            "chunk_index": ref.chunk_index,
+            "sentences": None
+        }
+
+        if ref.sentences:
+            ref_dict["sentences"] = [
+                {
+                    "content": s.content,
+                    "page_index": s.page_index,
+                    "bbox": s.bbox,
+                    "block_type": s.block_type,
+                    "bboxes": s.bboxes,
+                    "confidence": s.confidence
+                }
+                for s in ref.sentences
+            ]
+
+        enhanced_dicts.append(ref_dict)
+
+    return answer, enhanced_dicts
 
 
 def _is_local_engine(engine: Any) -> bool:

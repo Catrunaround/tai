@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict
 from uuid import UUID
 import time
 from pydantic import BaseModel, Field, ConfigDict
@@ -39,6 +39,13 @@ class ResponseReference(BaseEvt):
     model_config = ConfigDict(extra="forbid")
     type: Literal["response.reference"] = "response.reference"
     references: List[Reference] = Field(default_factory=list, min_items=1)
+
+class EnhancedCitations(BaseEvt):
+    """Enhanced citations with sentence-level details including bbox and page_index"""
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["response.enhanced_citations"] = "response.enhanced_citations"
+    answer: str = Field(..., description="Extracted answer text from LLM")
+    references: List[Dict] = Field(default_factory=list, description="Enhanced references with sentence citations")
 
 class AudioTranscript(BaseEvt):
     model_config = ConfigDict(extra="forbid")

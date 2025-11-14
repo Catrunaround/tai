@@ -15,6 +15,140 @@ class SentenceCitationService:
     """Service to match mentioned contexts to sentence mappings with bboxes"""
 
     @staticmethod
+    def find_sentence_positions(
+        contexts: List[Dict[str, str]],
+        file_uuids: Optional[List[str]] = None
+    ) -> Dict[str, List[SentenceCitation]]:
+        """
+        Find sentence positions (bbox, page_index) for a list of start/end word contexts.
+
+        This is an optimized function that directly takes contexts with file information
+        and returns position data. Only processes PDF files (files with sentence_mapping).
+
+        Args:
+            contexts: List of dicts with keys:
+                - 'start': First 5-8 words of the cited passage
+                - 'end': Last 5-8 words of the cited passage
+                - 'file_uuid': UUID of the file containing this passage (optional if file_uuids provided)
+            file_uuids: Optional list of file UUIDs to restrict search to.
+                        If provided, will only search in these files.
+                        If not provided, will use file_uuid from each context dict.
+
+        Returns:
+            Dict mapping file_uuid -> list of SentenceCitation objects with:
+                - content: Matched text content
+                - page_index: 0-indexed page number
+                - bbox: Primary bounding box [x1, y1, x2, y2]
+                - block_type: Type of block (title, text, etc.)
+                - bboxes: List of all bboxes if spans multiple lines
+
+        Example:
+            contexts = [
+                {
+                    "start": "Learning to use if",
+                    "end": "is an essential skill",
+                    "file_uuid": "abc-123"
+                },
+                {
+                    "start": "The while loop",
+                    "end": "continues until false",
+                    "file_uuid": "def-456"
+                }
+            ]
+            result = find_sentence_positions(contexts)
+            # Returns: {"abc-123": [SentenceCitation(...)], "def-456": [SentenceCitation(...)]}
+        """
+        if not contexts:
+            return {}
+
+        # Extract unique file_uuids from contexts or use provided list
+        if file_uuids is None:
+            file_uuids = list(set(ctx.get("file_uuid") for ctx in contexts if ctx.get("file_uuid")))
+
+        if not file_uuids:
+            print("[WARNING] No file_uuids provided or found in contexts")
+            return {}
+
+        # Batch fetch sentence mappings for all files
+        file_mappings = SentenceCitationService._batch_fetch_sentence_mappings(file_uuids)
+
+        if not file_mappings:
+            print("[WARNING] No sentence mappings found for provided file_uuids")
+            return {}
+
+        # Group contexts by file_uuid
+        contexts_by_file = {}
+        for ctx in contexts:
+            file_uuid = ctx.get("file_uuid")
+            if not file_uuid:
+                print(f"[WARNING] Context missing file_uuid: {ctx}")
+                continue
+
+            if file_uuid not in file_mappings:
+                # This file doesn't have sentence mapping (not a PDF or not processed)
+                continue
+
+            if file_uuid not in contexts_by_file:
+                contexts_by_file[file_uuid] = []
+            contexts_by_file[file_uuid].append(ctx)
+
+        # Match contexts to sentences for each file
+        result = {}
+        for file_uuid, file_contexts in contexts_by_file.items():
+            sentence_mapping = file_mappings[file_uuid]
+
+            # Use direct sentence matching (simpler, for 1-to-1 sentence-bbox mapping)
+            citations = SentenceCitationService._match_to_sentences_direct(
+                file_contexts,
+                sentence_mapping
+            )
+
+            if citations:
+                result[file_uuid] = citations
+
+        return result
+
+    @staticmethod
+    def _batch_fetch_sentence_mappings(file_uuids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Batch fetch sentence mappings for multiple files at once.
+
+        Args:
+            file_uuids: List of file UUIDs to fetch
+
+        Returns:
+            Dict mapping file_uuid -> sentence_mapping (only for files that have mappings)
+        """
+        if not file_uuids:
+            return {}
+
+        result = {}
+
+        # get_metadata_db() is a generator that yields a session
+        session_gen = get_metadata_db()
+        session = next(session_gen)
+
+        try:
+            # Batch query for all files at once
+            files = session.query(FileModel).filter(
+                FileModel.uuid.in_(file_uuids)
+            ).all()
+
+            for file_model in files:
+                sentence_mapping = file_model.get_sentence_mapping()
+                if sentence_mapping:
+                    result[file_model.uuid] = sentence_mapping
+
+        finally:
+            # Close the session properly
+            try:
+                next(session_gen)
+            except StopIteration:
+                pass
+
+        return result
+
+    @staticmethod
     def match_contexts_to_sentences(
         mentioned_contexts: List[Dict[str, str]],
         chunks: List[Dict[str, Any]]
@@ -75,7 +209,7 @@ class SentenceCitationService:
     def _match_to_mapping(
         mentioned_contexts: List[Dict[str, str]],
         sentence_mapping: List[Dict[str, Any]],
-        chunks: List[Dict[str, Any]]
+        chunks: List[Dict[str, Any]] = None  # Deprecated parameter, kept for backward compatibility
     ) -> List[SentenceCitation]:
         """
         Match mentioned contexts to sentences in the mapping using exact-start + fuzzy-range algorithm.
@@ -108,12 +242,24 @@ class SentenceCitationService:
             start_normalized = SentenceCitationService._normalize_text(start_text)
             end_normalized = SentenceCitationService._normalize_text(end_text)
 
-            # Find exact match for start
+            # Track confidence: start with 1.0 (exact match), reduce for fuzzy matches
+            match_confidence = 1.0
+
+            # Find exact match for start (try multiple strategies)
             start_pos = full_text_normalized.find(start_normalized)
 
             if start_pos == -1:
-                print(f"[WARNING] Could not find start text: '{start_text[:50]}'")
-                continue
+                # Try fuzzy match for start as fallback
+                start_pos, start_score = SentenceCitationService._fuzzy_find_start(
+                    start_normalized,
+                    full_text_normalized,
+                    threshold=0.85
+                )
+                if start_pos == -1:
+                    print(f"[WARNING] Could not find start text: '{start_text[:50]}'")
+                    continue
+                # Reduce confidence for fuzzy start match
+                match_confidence *= start_score
 
             # Define search range for end (1000 chars forward from start)
             search_range_start = start_pos
@@ -128,16 +274,19 @@ class SentenceCitationService:
                 end_pos = search_range_start + end_pos_in_range + len(end_normalized)
             else:
                 # Fuzzy match for end within range
-                end_pos = SentenceCitationService._fuzzy_find_end(
+                end_pos, end_score = SentenceCitationService._fuzzy_find_end(
                     end_normalized,
                     search_text,
                     search_range_start,
-                    threshold=0.90
+                    threshold=0.85
                 )
 
                 if end_pos == -1:
                     print(f"[WARNING] Could not find end text: '{end_text[:50]}'")
                     continue
+
+                # Reduce confidence for fuzzy end match
+                match_confidence *= end_score
 
             # Check if this range overlaps with already used ranges
             if SentenceCitationService._overlaps_used_ranges(start_pos, end_pos, used_ranges):
@@ -148,7 +297,8 @@ class SentenceCitationService:
                 start_pos,
                 end_pos,
                 full_text,
-                position_map
+                position_map,
+                confidence=match_confidence
             )
 
             if matched_citation:
@@ -200,11 +350,46 @@ class SentenceCitationService:
         return full_text, position_map
 
     @staticmethod
-    def _fuzzy_find_end(end_normalized: str, search_text: str, offset: int, threshold: float = 0.90) -> int:
+    def _fuzzy_find_start(start_normalized: str, full_text: str, threshold: float = 0.85) -> tuple:
+        """
+        Find start text in full_text using fuzzy matching with sliding window.
+
+        Args:
+            start_normalized: Normalized start text to find
+            full_text: Full normalized text to search in
+            threshold: Minimum similarity score (0.0-1.0)
+
+        Returns:
+            Tuple of (position, confidence_score) or (-1, 0.0) if not found
+        """
+        start_len = len(start_normalized)
+        best_pos = -1
+        best_score = 0.0
+
+        # Slide window through full text
+        for i in range(len(full_text) - start_len + 1):
+            window = full_text[i:i+start_len]
+            similarity = SequenceMatcher(None, start_normalized, window).ratio()
+
+            if similarity > best_score and similarity >= threshold:
+                best_score = similarity
+                best_pos = i
+
+        return (best_pos, best_score) if best_pos != -1 else (-1, 0.0)
+
+    @staticmethod
+    def _fuzzy_find_end(end_normalized: str, search_text: str, offset: int, threshold: float = 0.85) -> tuple:
         """
         Find end text in search_text using fuzzy matching.
 
-        Returns absolute position in full text, or -1 if not found.
+        Args:
+            end_normalized: Normalized end text to find
+            search_text: Text to search within
+            offset: Offset to add to position (for absolute positioning)
+            threshold: Minimum similarity score (0.0-1.0)
+
+        Returns:
+            Tuple of (absolute_position, confidence_score) or (-1, 0.0) if not found
         """
         end_len = len(end_normalized)
         best_pos = -1
@@ -219,7 +404,7 @@ class SentenceCitationService:
                 best_score = similarity
                 best_pos = offset + i + end_len
 
-        return best_pos
+        return (best_pos, best_score) if best_pos != -1 else (-1, 0.0)
 
     @staticmethod
     def _overlaps_used_ranges(start: int, end: int, used_ranges: List[tuple]) -> bool:
@@ -230,11 +415,163 @@ class SentenceCitationService:
         return False
 
     @staticmethod
+    def _match_to_sentences_direct(
+        mentioned_contexts: List[Dict[str, str]],
+        sentence_mapping: List[Dict[str, Any]]
+    ) -> List[SentenceCitation]:
+        """
+        Direct sentence matching for 1-to-1 sentence-bbox mappings.
+
+        This finds ALL sentences within a cited range (from start to end words),
+        returning multiple citations when a context spans multiple sentences.
+
+        Supports two formats:
+        1. Simple format: {"content": "...", "bbox": [x1, y1, x2, y2]}
+        2. Complex format: {"page_index": 0, "block_type": "text", "spans": [...]}
+
+        Args:
+            mentioned_contexts: List of dicts with 'start' and 'end' word markers
+            sentence_mapping: List of sentence blocks from extra_info
+
+        Returns:
+            List of SentenceCitation objects (multiple citations per context if it spans multiple sentences)
+        """
+        citations = []
+        used_sentences = set()  # Track by bbox_tuple to avoid duplicates
+
+        for context in mentioned_contexts:
+            start_text = context.get("start", "")
+            end_text = context.get("end", "")
+
+            if not start_text or not end_text:
+                print(f"[WARNING] Missing start or end in context: {context}")
+                continue
+
+            # Normalize for matching
+            start_normalized = SentenceCitationService._normalize_text(start_text)
+            end_normalized = SentenceCitationService._normalize_text(end_text)
+
+            # Find start and end sentence indices
+            start_idx = None
+            end_idx = None
+            start_confidence = 0.0
+            end_confidence = 0.0
+
+            # Parse all sentences first
+            parsed_sentences = []
+            for idx, sentence_obj in enumerate(sentence_mapping):
+                # Handle both simple and complex formats
+                if "content" in sentence_obj and "bbox" in sentence_obj:
+                    sentence_content = sentence_obj.get("content", "")
+                    bbox = sentence_obj.get("bbox", [])
+                    page_index = sentence_obj.get("page_index", 0)
+                    block_type = sentence_obj.get("block_type", "text")
+                    all_bboxes = [bbox] if bbox else []
+                elif "spans" in sentence_obj:
+                    sentence_content = ""
+                    for span in sentence_obj.get("spans", []):
+                        sentence_content += span.get("content", "")
+                    page_index = sentence_obj.get("page_index", 0)
+                    block_type = sentence_obj.get("block_type", "text")
+                    spans = sentence_obj.get("spans", [])
+                    if not spans or not spans[0].get("bbox"):
+                        continue
+                    bbox = spans[0].get("bbox", [])
+                    all_bboxes = [span.get("bbox", []) for span in spans if span.get("bbox")]
+                else:
+                    continue
+
+                if not sentence_content or not bbox:
+                    continue
+
+                parsed_sentences.append({
+                    "idx": idx,
+                    "content": sentence_content,
+                    "normalized": SentenceCitationService._normalize_text(sentence_content),
+                    "bbox": bbox,
+                    "page_index": page_index,
+                    "block_type": block_type,
+                    "all_bboxes": all_bboxes
+                })
+
+            # Find the start sentence (sentence that contains or matches start_text)
+            for i, sent in enumerate(parsed_sentences):
+                if sent["normalized"].startswith(start_normalized) or start_normalized in sent["normalized"]:
+                    # Exact match or contains
+                    start_idx = i
+                    start_confidence = 1.0
+                    break
+                else:
+                    # Fuzzy match for start
+                    similarity = SequenceMatcher(None,
+                        sent["normalized"][:len(start_normalized)] if len(sent["normalized"]) >= len(start_normalized) else sent["normalized"],
+                        start_normalized
+                    ).ratio()
+                    if similarity >= 0.85 and similarity > start_confidence:
+                        start_idx = i
+                        start_confidence = similarity
+
+            if start_idx is None:
+                print(f"[WARNING] Could not find start sentence for: '{start_text[:50]}'")
+                continue
+
+            # Find the end sentence (sentence that contains or matches end_text)
+            # Search from start_idx onwards
+            for i in range(start_idx, len(parsed_sentences)):
+                sent = parsed_sentences[i]
+                if sent["normalized"].endswith(end_normalized) or end_normalized in sent["normalized"]:
+                    # Exact match or contains
+                    end_idx = i
+                    end_confidence = 1.0
+                    break
+                else:
+                    # Fuzzy match for end
+                    similarity = SequenceMatcher(None,
+                        sent["normalized"][-len(end_normalized):] if len(sent["normalized"]) >= len(end_normalized) else sent["normalized"],
+                        end_normalized
+                    ).ratio()
+                    if similarity >= 0.85 and similarity > end_confidence:
+                        end_idx = i
+                        end_confidence = similarity
+
+            if end_idx is None:
+                print(f"[WARNING] Could not find end sentence for: '{end_text[:50]}'")
+                # If we can't find end, just use the start sentence
+                end_idx = start_idx
+                end_confidence = start_confidence
+
+            # Extract all sentences from start_idx to end_idx (inclusive)
+            overall_confidence = (start_confidence + end_confidence) / 2.0
+
+            for i in range(start_idx, end_idx + 1):
+                sent = parsed_sentences[i]
+                bbox_key = tuple(sent["bbox"])
+
+                # Skip if already used
+                if bbox_key in used_sentences:
+                    continue
+
+                citation = SentenceCitation(
+                    content=sent["content"].strip(),
+                    page_index=sent["page_index"],
+                    bbox=sent["bbox"],
+                    block_type=sent["block_type"],
+                    bboxes=sent["all_bboxes"] if len(sent["all_bboxes"]) > 1 else None,
+                    confidence=overall_confidence
+                )
+
+                citations.append(citation)
+                used_sentences.add(bbox_key)
+
+        return citations
+
+    @staticmethod
     def _extract_citation_from_range(
         start_pos: int,
         end_pos: int,
         full_text: str,
-        position_map: List[Dict[str, Any]]
+        position_map: List[Dict[str, Any]],
+        confidence: float = 1.0
     ) -> Optional[SentenceCitation]:
         """
         Extract citation information from character range.
@@ -271,7 +608,8 @@ class SentenceCitationService:
             page_index=first_span["page_index"],
             bbox=merged_bboxes[0],  # Primary bbox (first region)
             block_type=first_span["block_type"],
-            bboxes=merged_bboxes if len(merged_bboxes) > 1 else None  # List of distinct bboxes
+            bboxes=merged_bboxes if len(merged_bboxes) > 1 else None,  # List of distinct bboxes
+            confidence=confidence
         )
 
     @staticmethod
@@ -448,14 +786,24 @@ IMPORTANT: When answering, you must return your response in the following JSON f
 {
     "answer": "Your complete answer here...",
     "mentioned_contexts": [
-        {"start": "first 5-8 words from reference", "end": "last 5-8 words from reference"},
-        {"start": "first 5-8 words from another reference", "end": "last 5-8 words from another reference"}
+        {
+            "reference": 1,
+            "start": "first 5-8 words from reference 1",
+            "end": "last 5-8 words from reference 1"
+        },
+        {
+            "reference": 2,
+            "start": "first 5-8 words from reference 2",
+            "end": "last 5-8 words from reference 2"
+        }
     ]
 }
 
 In the "mentioned_contexts" array, for each sentence or passage you used from the reference materials:
+- Include "reference": the reference number (e.g., 1, 2, 3) from the provided references
 - Extract the EXACT first 5-8 words as "start" (word-for-word from the reference, not paraphrased)
 - Extract the EXACT last 5-8 words as "end" (word-for-word from the reference, not paraphrased)
 - Only include content that directly contributed to your response
 - If a sentence is very short (less than 10 words), use the first half as "start" and second half as "end"
+- You can cite the same reference multiple times if you used different parts of it
 """

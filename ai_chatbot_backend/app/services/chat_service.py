@@ -8,6 +8,7 @@ import soundfile as sf
 import numpy as np
 from openai import OpenAI
 from app.services.rag_postprocess import extract_channels
+from app.services.rag_generation import enhance_references_v2
 
 def extract_channels_oss(text: str) -> dict:
     # 1) Remove the special marker wherever it appears
@@ -196,6 +197,24 @@ async def chat_stream_parser(
             ))
     if references:
         yield sse(ResponseReference(references=references))
+
+    # Enhanced sentence-level citations with bbox and page_index
+    try:
+        final_response = channels['final']
+        answer_text, enhanced_refs = enhance_references_v2(final_response, reference_list)
+
+        # Only send enhanced references if we have sentence-level citations
+        if enhanced_refs and any(ref.get('sentences') for ref in enhanced_refs):
+            print(f"\n[INFO] Sending enhanced citations for {len(enhanced_refs)} references")
+            # Send enhanced references as a separate event
+            # Frontend can use this for precise PDF highlighting
+            yield sse(EnhancedCitations(
+                answer=answer_text,
+                references=enhanced_refs
+            ))
+    except Exception as e:
+        print(f"[WARNING] Failed to enhance citations: {e}")
+        # Continue without enhanced citations (graceful degradation)
 
     yield sse(Done())
     yield "data: [DONE]\n\n"  # Final done message for SSE clients

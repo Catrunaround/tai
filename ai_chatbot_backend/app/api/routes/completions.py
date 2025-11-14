@@ -15,7 +15,8 @@ from app.dependencies.model import get_model_engine, get_whisper_engine
 from app.services.rag_retriever import top_k_selector
 from app.services.rag_generation import (
     format_chat_msg,
-    generate_chat_response
+    generate_chat_response,
+    enhance_references_v2
 )
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -118,7 +119,25 @@ async def create_completion(
             media_type="text/event-stream"
         )
     else:
-        return JSONResponse(ResponseDelta(text=response).model_dump_json(exclude_unset=True))
+        # Non-streaming response: enhance with citations
+        try:
+            answer_text, enhanced_refs = enhance_references_v2(response, reference_list)
+
+            # Return enhanced response with sentence-level citations
+            response_data = {
+                "text": answer_text,
+                "references": enhanced_refs
+            }
+
+            # If no enhanced citations, fall back to basic response
+            if not enhanced_refs or not any(ref.get('sentences') for ref in enhanced_refs):
+                response_data = {"text": response}
+
+            return JSONResponse(response_data)
+        except Exception as e:
+            print(f"[WARNING] Failed to enhance non-streaming response: {e}")
+            # Fallback to original behavior
+            return JSONResponse(ResponseDelta(text=response).model_dump_json(exclude_unset=True))
 
 @router.post("/tts")
 async def text_to_speech(
