@@ -12,8 +12,7 @@ from app.core.models.chat_completion import Message, UserFocus
 from app.services.rag_preprocess import build_retrieval_query, build_augmented_prompt, build_file_augmented_context
 from app.services.sentence_citation_service import (
     SentenceCitationService,
-    CITATION_SAMPLING_PARAMS,
-    SIMPLE_CITATION_SAMPLING_PARAMS
+    CITATION_SAMPLING_PARAMS
 )
 from app.services.citation_enhancement import (
     enhance_citations_with_metadata,
@@ -123,9 +122,12 @@ async def generate_chat_response(
     # Generate the response using the engine
     if _is_local_engine(engine):
         # Select sampling params based on citation format
+        # NOTE: Guided decoding forces ONLY JSON output, preventing thinking
+        # For thinking models, we disable guided decoding and use regex extraction instead
         if use_simple_json:
             # Simple JSON format: {"answer": "...", "mentioned_contexts": [...]}
-            sampling_params = SIMPLE_CITATION_SAMPLING_PARAMS
+            # Disable guided decoding to allow thinking sections before JSON
+            sampling_params = None  # Let model output naturally with thinking
         elif enable_sentence_citations:
             # Complex citation format with sentence-level details
             sampling_params = CITATION_SAMPLING_PARAMS
@@ -254,10 +256,10 @@ def format_chat_msg(messages: List[Message], enable_citations: bool = True, use_
     # Add citation instructions based on format
     if use_simple_json:
         # Simple JSON format instructions with start/end citation tracking
+        # Allows thinking section before JSON output
         system_message += (
-            "\n\nIMPORTANT: You MUST respond with ONLY a JSON object in the following format:\n"
             "{\n"
-            '  "answer": "Your complete answer here",\n'
+            '  "answer": "Your complete answer to the user here",\n'
             '  "mentioned_contexts": [\n'
             '    {\n'
             '      "reference": 1,\n'
@@ -267,14 +269,13 @@ def format_chat_msg(messages: List[Message], enable_citations: bool = True, use_
             '  ]\n'
             "}\n\n"
             "Instructions:\n"
-            "1. The 'answer' field contains your complete response to the user\n"
-            "2. The 'mentioned_contexts' array tracks each citation from the references:\n"
-            "   - 'reference': The reference number (1-indexed) from the provided references\n"
-            "   - 'start': First 3-5 words from the specific passage you cited\n"
-            "   - 'end': Last 3-5 words from the specific passage you cited\n"
-            "3. Each time you use information from a reference, add an entry with the specific text snippet\n"
-            "4. Return ONLY the JSON object - no additional text before or after\n"
-            "5. Ensure the JSON is valid and properly formatted\n"
+            "- The 'answer' field contains your complete, helpful response to the user\n"
+            "- The 'mentioned_contexts' array tracks each citation from the provided references:\n"
+            "  * 'reference': Reference number (1-indexed) from provided references\n"
+            "  * 'start': First 3-5 words from the cited passage\n"
+            "  * 'end': Last 3-5 words from the cited passage\n"
+            "- Each time you use information from a reference, add it to mentioned_contexts\n"
+            "- Ensure the JSON is valid and properly formatted\n"
         )
     elif enable_citations:
         # Complex citation format with sentence-level details

@@ -32,15 +32,19 @@ def extract_channels_oss(text: str) -> dict:
 def extract_answer_from_streaming_json(text: str) -> dict:
     """
     Extract clean answer text from streaming JSON without showing JSON syntax.
+    Supports thinking models with <think> tags or thinking sections before JSON.
 
     This function progressively extracts the 'answer' field value from a JSON object
-    being streamed, hiding JSON syntax like braces, quotes, and field names.
+    being streamed, hiding JSON syntax and thinking sections from the user.
+
+    Uses the same streaming pattern as extract_channels() for consistency.
 
     Args:
-        text: Partial or complete JSON text like '{"answer": "Python uses..."}'
+        text: Partial or complete text like '<think>reasoning...</think>{"answer": "Python uses..."}'
 
     Returns:
         dict with:
+            - 'thinking': Thinking text (before </think>)
             - 'answer': Clean extracted answer text (empty if not yet extractable)
             - 'complete': Boolean indicating if JSON is complete
             - 'mentioned_contexts': List of reference dicts (only when complete)
@@ -48,37 +52,54 @@ def extract_answer_from_streaming_json(text: str) -> dict:
     import json as json_lib
 
     result = {
+        'thinking': '',
         'answer': '',
         'complete': False,
         'mentioned_contexts': []
     }
 
-    # Try to parse as complete JSON first
-    try:
-        parsed = json_lib.loads(text)
-        if isinstance(parsed, dict) and 'answer' in parsed:
-            result['answer'] = parsed['answer']
-            result['complete'] = True
-            result['mentioned_contexts'] = parsed.get('mentioned_contexts', [])
-            return result
-    except (json_lib.JSONDecodeError, ValueError):
-        pass
+    # Step 1: Extract thinking part using extract_channels pattern
+    if "</think>" in text:
+        parts = text.split("</think>", 1)
+        result['thinking'] = parts[0].strip()
+        json_content = parts[1].strip()
+    else:
+        # Handle incomplete </think> tags (streaming-friendly)
+        incomplete_patterns = ["</think", "</", "<"]
+        cleaned_text = text
+        for pattern in incomplete_patterns:
+            if text.endswith(pattern):
+                cleaned_text = text[:-len(pattern)]
+                break
+        result['thinking'] = cleaned_text.strip()
+        json_content = ""
 
-    # If not complete JSON, try to extract answer field progressively
-    # Match: {"answer": "text content that might be incomplete
-    # We want to extract only the text content part
-    answer_pattern = re.compile(
-        r'\{\s*"answer"\s*:\s*"((?:[^"\\]|\\.)*)',
-        re.DOTALL
-    )
+    # Step 2: Try to parse as complete JSON first
+    if json_content:
+        try:
+            parsed = json_lib.loads(json_content)
+            if isinstance(parsed, dict) and 'answer' in parsed:
+                result['answer'] = parsed['answer']
+                result['complete'] = True
+                result['mentioned_contexts'] = parsed.get('mentioned_contexts', [])
+                return result
+        except (json_lib.JSONDecodeError, ValueError):
+            pass
 
-    match = answer_pattern.search(text)
-    if match:
-        # Extract the answer content, unescaping JSON string escapes
-        raw_answer = match.group(1)
-        # Unescape common JSON escapes
-        answer_text = raw_answer.replace(r'\"', '"').replace(r'\\', '\\').replace(r'\n', '\n')
-        result['answer'] = answer_text
+        # Step 3: If not complete JSON, extract answer field progressively
+        # Match: {"answer": "text content that might be incomplete
+        answer_pattern = re.compile(
+            r'\{\s*"answer"\s*:\s*"((?:[^"\\]|\\.)*)',
+            re.DOTALL
+        )
+
+        match = answer_pattern.search(json_content)
+        if match:
+            # Extract the answer content, unescaping JSON string escapes
+            raw_answer = match.group(1)
+            # Unescape common JSON escapes
+            answer_text = raw_answer.replace(r'\"', '"').replace(r'\\', '\\').replace(r'\n', '\n')
+            result['answer'] = answer_text
 
     return result
 
@@ -149,17 +170,6 @@ async def chat_stream_parser(
                 # Continue to reference handling below
             else:
                 continue
-
-        elif use_json_array:
-            # Legacy JSON array format (kept for backward compatibility)
-            json_data = extract_json_array(text)
-            all_answers = " ".join([obj["answer"] for obj in json_data["objects"]])
-            if json_data["current_partial"]:
-                all_answers += (" " if all_answers else "") + json_data["current_partial"]
-            channels = {
-                "analysis": json_data["analysis"],
-                "final": all_answers.strip()
-            }
         else:
             # Use existing extract_channels logic (channel-based format)
             channels = extract_channels(text)
