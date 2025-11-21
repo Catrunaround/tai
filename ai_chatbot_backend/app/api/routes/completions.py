@@ -100,7 +100,8 @@ async def create_completion(
         course=params.course_code,
         engine=llm_engine,
         audio_response=params.audio_response,
-        sid=sid
+        sid=sid,
+        json_output=params.json_output
     )
 
     if params.stream:
@@ -110,10 +111,11 @@ async def create_completion(
                 reference_list,
                 params.audio_response,
                 audio_text=audio_text,
-                messages=format_chat_msg(params.messages),
+                messages=format_chat_msg(params.messages, json_output=params.json_output),
                 engine=llm_engine,
                 old_sid=sid,
-                course_code=params.course_code
+                course_code=params.course_code,
+                json_output=params.json_output
             ),
             media_type="text/event-stream"
         )

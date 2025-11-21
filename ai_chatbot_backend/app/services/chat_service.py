@@ -28,7 +28,7 @@ def extract_channels_oss(text: str) -> dict:
     return result
 
 async def chat_stream_parser(
-        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message]= None,audio_text: str=None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False
+        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message]= None,audio_text: str=None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False, json_output: bool = False
 ) -> AsyncIterator[str]:
     """
     Parse the streaming response from the chat model and yield deltas.
@@ -169,18 +169,52 @@ async def chat_stream_parser(
     # print(full_response_text)
 
 
-    pattern = re.compile(
-        r'(?:\[Reference:\s*([\d,\s]+)\]'
-        r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
-        re.IGNORECASE
-    )
+    # Extract mentioned references based on output format
+    mentioned_references = set()
 
-    mentioned_references = {
-        int(n)
-        for m in pattern.finditer(channels['final'])
-        for n in re.findall(r'\d+', m.group(1) or m.group(2))
-    }
-    print(f"\n[INFO] Mentioned references: {mentioned_references}")
+    if json_output:
+        # Parse JSON to extract mentioned_contexts
+        try:
+            import json
+            final_text = channels['final'].strip()
+            # Remove markdown code blocks if present
+            if final_text.startswith('```'):
+                final_text = re.sub(r'^```(?:json)?\s*\n?', '', final_text)
+                final_text = re.sub(r'\n?```\s*$', '', final_text)
+
+            json_data = json.loads(final_text)
+            if 'mentioned_contexts' in json_data and isinstance(json_data['mentioned_contexts'], list):
+                for context in json_data['mentioned_contexts']:
+                    if 'reference' in context:
+                        mentioned_references.add(int(context['reference']))
+            print(f"\n[INFO] Mentioned references from JSON: {mentioned_references}")
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            print(f"\n[WARNING] Failed to parse JSON output, falling back to regex: {e}")
+            # Fall back to regex pattern if JSON parsing fails
+            pattern = re.compile(
+                r'(?:\[Reference:\s*([\d,\s]+)\]'
+                r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
+                re.IGNORECASE
+            )
+            mentioned_references = {
+                int(n)
+                for m in pattern.finditer(channels['final'])
+                for n in re.findall(r'\d+', m.group(1) or m.group(2))
+            }
+    else:
+        # Original regex-based extraction for markdown format
+        pattern = re.compile(
+            r'(?:\[Reference:\s*([\d,\s]+)\]'
+            r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
+            re.IGNORECASE
+        )
+        mentioned_references = {
+            int(n)
+            for m in pattern.finditer(channels['final'])
+            for n in re.findall(r'\d+', m.group(1) or m.group(2))
+        }
+        print(f"\n[INFO] Mentioned references: {mentioned_references}")
+
     references = []
     max_idx = len(reference_list)
     for i in sorted(mentioned_references):

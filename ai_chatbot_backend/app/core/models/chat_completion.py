@@ -81,6 +81,7 @@ class GeneralCompletionParams(BaseModel):
     rag: Optional[bool] = True
     audio_response: Optional[bool] = False
     sid: Optional[str] = None  # chat_history_sid from frontend
+    json_output: Optional[bool] = False  # Enable JSON output format
 
 class FileCompletionParams(BaseModel):
     """
@@ -95,6 +96,7 @@ class FileCompletionParams(BaseModel):
     audio_response: Optional[bool] = False
     sid: Optional[str] = None  # chat_history_sid from frontend
     user_focus: UserFocus
+    json_output: Optional[bool] = False  # Enable JSON output format
 
 class PracticeCompletionParams(BaseModel):
     """
@@ -111,6 +113,7 @@ class PracticeCompletionParams(BaseModel):
     answer_content: str
     problem_id: str
     file_path: str
+    json_output: Optional[bool] = False  # Enable JSON output format
 
 class VoiceTranscriptParams(BaseModel):
     audio: VoiceMessage

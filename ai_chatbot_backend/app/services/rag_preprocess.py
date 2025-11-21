@@ -75,7 +75,8 @@ def build_augmented_prompt(
         reference_list: List[Dict] = None,
         problem_content: Optional[str] = None,
         answer_content: Optional[str] = None,
-        audio_response: bool = False
+        audio_response: bool = False,
+        json_output: bool = False
 ) -> Tuple[str, List[Dict], str]:
     """
     Build an augmented prompt by retrieving reference documents.
@@ -124,18 +125,46 @@ def build_augmented_prompt(
                 f'Document: {top_docs[i]}\n\n'
             )
             reference_list.append([topic_path, url, file_path, file_uuid,chunk_index])
-    # Create response and reference styles based on audio mode.
+    # Create response and reference styles based on audio mode and json_output flag.
     if not audio_response:
-        response_style = (
-            f"Answer the instruction thoroughly with a well-structured markdown format answer (do not add '```markdown'). "
-            f"Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
-            f"No references at the end."
-        )
-        # "[Reference: a; Quote: 'xxx to xxx']"
-        reference_style = (
-            f"\nALWAYS: Refer to specific reference numbers inline using [Reference: a,b] style!!! Do not use other style like refs, 【】, Reference: [n], > *Reference: n*, [Reference: a-b]  or (reference n)!!!"
-            f"\nDo not list references at the end. "
-        )
+        if json_output:
+            # JSON output format
+            response_style = (
+                f"Output your answer in JSON format with the following structure:\n"
+                f"{{\n"
+                f'  "answer": "Your complete answer here with thorough explanation",\n'
+                f'  "mentioned_contexts": [\n'
+                f'    {{"reference": 1, "start": "exact quote start", "end": "exact quote end"}},\n'
+                f'    {{"reference": 2, "start": "exact quote start", "end": "exact quote end"}}\n'
+                f"  ]\n"
+                f"}}\n"
+                f"IMPORTANT:\n"
+                f"- The 'answer' field should contain your complete response as a single string.\n"
+                f"- Discuss what each reference is (textbook, lecture notes, etc.) and what it covers.\n"
+                f"- For each reference you use, add an entry in 'mentioned_contexts' with the reference number and the exact text span from that reference.\n"
+                f"- The 'start' and 'end' fields should contain exact quotes from the reference document.\n"
+                f"- Output ONLY valid JSON. Do not add ```json``` code blocks or any text outside the JSON structure."
+            )
+            reference_style = (
+                f"\nFor the 'mentioned_contexts' array:\n"
+                f"- Add one object for each reference you cite in your answer.\n"
+                f"- The 'reference' field is the reference number (1, 2, 3, etc.).\n"
+                f"- The 'start' and 'end' fields should be exact text spans from the reference document that support your answer.\n"
+                f"- Keep quotes concise but meaningful (5-15 words typical).\n"
+                f"- If you don't cite any references, use an empty array: []"
+            )
+        else:
+            # Original markdown format
+            response_style = (
+                f"Answer the instruction thoroughly with a well-structured markdown format answer (do not add '```markdown'). "
+                f"Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
+                f"No references at the end."
+            )
+            # "[Reference: a; Quote: 'xxx to xxx']"
+            reference_style = (
+                f"\nALWAYS: Refer to specific reference numbers inline using [Reference: a,b] style!!! Do not use other style like refs, 【】, Reference: [n], > *Reference: n*, [Reference: a-b]  or (reference n)!!!"
+                f"\nDo not list references at the end. "
+            )
     else:
         response_style = """
         STYLE:

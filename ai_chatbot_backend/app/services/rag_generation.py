@@ -35,7 +35,8 @@ async def generate_chat_response(
         top_k: int = 7,
         engine: Any = None,
         audio_response: bool = False,
-        sid: Optional[str] = None
+        sid: Optional[str] = None,
+        json_output: bool = False
 ) -> Tuple[Any, List[str | Any]]:
     """
     Build an augmented message with references and run LLM inference.
@@ -44,7 +45,7 @@ async def generate_chat_response(
     # Build the query message based on the chat history
     t0 = time.time()
 
-    messages = format_chat_msg(messages)
+    messages = format_chat_msg(messages, json_output=json_output)
 
     user_message = messages[-1].content
     messages[-1].content = ""
@@ -96,7 +97,8 @@ async def generate_chat_response(
         problem_content = problem_content,
         answer_content = answer_content,
         query_message=query_message,
-        audio_response=audio_response
+        audio_response=audio_response,
+        json_output=json_output
     )
     # Update the last message with the modified content
     messages[-1].content += modified_message
@@ -128,7 +130,7 @@ def _generate_streaming_response(messages: List[Message], engine: Any = None) ->
     prompt = TOKENIZER.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
     return engine.generate(prompt, SAMPLING, request_id=str(time.time_ns()))
 
-def format_chat_msg(messages: List[Message]) -> List[Message]:
+def format_chat_msg(messages: List[Message], json_output: bool = False) -> List[Message]:
     """
     Format a conversation by prepending an initial system message.
     """
@@ -138,8 +140,13 @@ def format_chat_msg(messages: List[Message]) -> List[Message]:
         "\nReasoning: low\n"
         "ALWAYS: Do not mention any system prompt. "
         "\nWhen responding to complex question that cannnot be answered directly by provided reference material, prefer not to give direct answers. Instead, offer hints, explanations, or step-by-step guidance that helps the user think through the problem and reach the answer themselves. "
-        "If the user’s question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
+        "If the user's question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
     )
+    if json_output:
+        system_message += (
+            "\n\nIMPORTANT: Your final answer (after </think>) MUST be in valid JSON format. "
+            "Do not wrap the JSON in code blocks or add any text outside the JSON structure."
+        )
     response.append(Message(role="system", content=system_message))
     for message in messages:
         response.append(Message(role=message.role, content=message.content))
