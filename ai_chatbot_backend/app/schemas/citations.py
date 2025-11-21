@@ -16,6 +16,10 @@ class SentenceCitation(BaseModel):
         None,
         description="All bounding boxes if citation spans multiple lines/regions [[x1,y1,x2,y2], ...]"
     )
+    confidence: Optional[float] = Field(
+        None,
+        description="Matching confidence score (0.0-1.0). 1.0 = exact match, <1.0 = fuzzy match"
+    )
 
     class Config:
         json_schema_extra = {
@@ -24,7 +28,8 @@ class SentenceCitation(BaseModel):
                 "page_index": 0,
                 "bbox": [51, 150, 561, 222],
                 "block_type": "text",
-                "bboxes": [[51, 150, 561, 172], [51, 172, 561, 222]]
+                "bboxes": [[51, 150, 561, 172], [51, 172, 561, 222]],
+                "confidence": 1.0
             }
         }
 

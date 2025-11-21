@@ -11,14 +11,34 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class Aspect(BaseModel):
+    """A specific aspect of a key concept"""
+    content: str = Field(..., description="Detailed explanation of this aspect")
+    type: str = Field(..., description="Type of aspect (Definition, Example, Use Case, Implication, etc.)")
+
+
+class CheckInQuestion(BaseModel):
+    """Check-in question for a section"""
+    question_text: str = Field(..., description="The question text")
+    options: List[str] = Field(..., description="List of answer options")
+    correct_answer: List[int] = Field(..., description="Indices of correct answers")
+    explanation: str = Field(..., description="Explanation of the correct answer")
+
+
 class Section(BaseModel):
     """Educational section with structured content"""
     index: float = Field(..., description="Section order/position")
     key_concept: str = Field(..., description="Main topic of the section")
-    aspect: str = Field(..., description="Detailed explanation of the key concept")
     name: str = Field(..., description="Section title")
-    checking_questions: Optional[List[str]] = Field(None, description="List of checking questions")
-    comprehensive_questions: Optional[List[str]] = Field(None, description="List of comprehensive questions")
+
+    # New structured format
+    aspects: Optional[List[Aspect]] = Field(None, description="List of aspects explaining the key concept")
+    check_in_question: Optional[CheckInQuestion] = Field(None, description="Check-in question for this section")
+
+    # Legacy fields (backward compatibility)
+    aspect: Optional[str] = Field(None, description="[DEPRECATED] Single aspect explanation (use aspects instead)")
+    checking_questions: Optional[List[str]] = Field(None, description="[DEPRECATED] List of checking questions")
+    comprehensive_questions: Optional[List[str]] = Field(None, description="[DEPRECATED] List of comprehensive questions")
 
 
 

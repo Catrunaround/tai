@@ -15,7 +15,8 @@ from app.dependencies.model import get_model_engine, get_whisper_engine
 from app.services.rag_retriever import top_k_selector
 from app.services.rag_generation import (
     format_chat_msg,
-    generate_chat_response
+    generate_chat_response,
+    enhance_references_v2
 )
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -52,7 +53,7 @@ def parse_assistant_message(content):
     return content
 
 @router.post("/completions")
-async def create_text_completion(
+async def create_completion(
         params: GeneralCompletionParams | FileCompletionParams | PracticeCompletionParams,
         db: Session = Depends(get_metadata_db),
         _: bool = Depends(verify_api_token)
@@ -100,7 +101,8 @@ async def create_text_completion(
         course=params.course_code,
         engine=llm_engine,
         audio_response=params.audio_response,
-        sid=sid
+        sid=sid,
+        use_simple_json=getattr(params, 'use_simple_json', False)
     )
 
     if params.stream:
@@ -113,12 +115,33 @@ async def create_text_completion(
                 messages=format_chat_msg(params.messages),
                 engine=llm_engine,
                 old_sid=sid,
-                course_code=params.course_code
+                course_code=params.course_code,
+                use_json_array=params.use_json_array,
+                use_simple_json=getattr(params, 'use_simple_json', False)
             ),
             media_type="text/event-stream"
         )
     else:
-        return JSONResponse(ResponseDelta(text=response).model_dump_json(exclude_unset=True))
+        # Non-streaming response: enhance with citations
+        try:
+            answer_text, enhanced_refs = enhance_references_v2(response, reference_list)
+
+            # Return enhanced response with sentence-level citations
+            response_data = {
+                "text": answer_text,
+                "references": enhanced_refs
+            }
+            print(f"debug enhanced_refs: {enhanced_refs}")
+
+            # If no enhanced citations, fall back to basic response
+            if not enhanced_refs or not any(ref.get('sentences') for ref in enhanced_refs):
+                response_data = {"text": response}
+
+            return JSONResponse(response_data)
+        except Exception as e:
+            print(f"[WARNING] Failed to enhance non-streaming response: {e}")
+            # Fallback to original behavior
+            return JSONResponse(ResponseDelta(text=response).model_dump_json(exclude_unset=True))
 
 @router.post("/tts")
 async def text_to_speech(

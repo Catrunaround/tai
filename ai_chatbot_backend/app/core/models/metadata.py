@@ -34,7 +34,16 @@ class FileModel(MetadataBase):
 
         try:
             extra_data = json.loads(self.extra_info)
-            return extra_data.get("sentence_mapping")
+
+            # Handle both formats:
+            # 1. Direct list: [...] (sentence_mapping stored directly)
+            # 2. Dict wrapper: {"sentence_mapping": [...]}
+            if isinstance(extra_data, list):
+                return extra_data
+            elif isinstance(extra_data, dict):
+                return extra_data.get("sentence_mapping")
+            else:
+                return None
         except (json.JSONDecodeError, TypeError):
             return None
 

@@ -30,6 +30,65 @@ def extract_channels(text: str) -> dict:
         "final": ""
     }
 
+
+def extract_json_array(text: str) -> dict:
+    """
+    Extract JSON array format from streaming text.
+
+    Reuses extract_channels() logic to split by </think> delimiter,
+    then parses JSON array from the post-thinking content.
+
+    Args:
+        text: Raw LLM output text
+
+    Returns:
+        dict with:
+            - analysis: Raw thinking text (before </think>)
+            - objects: List of complete {"reference": "...", "answer": "..."} objects
+            - current_partial: Partial answer text being streamed (incomplete object)
+    """
+    # Step 1: Extract thinking part (reuse extract_channels logic)
+    if "</think>" in text:
+        parts = text.split("</think>", 1)
+        analysis = parts[0].strip()
+        json_content = parts[1].strip()
+    else:
+        # Handle incomplete </think> tags
+        incomplete_patterns = ["</think", "</", "<"]
+        cleaned_text = text
+        for pattern in incomplete_patterns:
+            if text.endswith(pattern):
+                cleaned_text = text[:-len(pattern)]
+                break
+        analysis = cleaned_text.strip()
+        json_content = ""
+
+    # Step 2: Parse JSON array from remaining content
+    # Use regex to find complete objects with both reference and answer
+    complete_pattern = r'\{\s*"reference"\s*:\s*"([^"]*)"\s*,\s*"answer"\s*:\s*"([^"]*)"\s*\}'
+    matches = re.findall(complete_pattern, json_content)
+
+    objects = [{"reference": ref, "answer": ans} for ref, ans in matches]
+
+    # Step 3: Handle partial/incomplete current object
+    # Look for objects that have reference but incomplete answer (missing closing quote or brace)
+    partial_pattern = r'\{\s*"reference"\s*:\s*"([^"]*)"\s*,\s*"answer"\s*:\s*"([^"]*?)(?:"|$)'
+    current_partial = ""
+
+    # Find the last partial match that's not already in complete objects
+    partial_matches = list(re.finditer(partial_pattern, json_content))
+    if partial_matches:
+        last_match = partial_matches[-1]
+        # Check if this is a new partial object (not already counted in complete objects)
+        if len(partial_matches) > len(objects):
+            current_partial = last_match.group(2)
+
+    return {
+        "analysis": analysis,
+        "objects": objects,
+        "current_partial": current_partial
+    }
+
 # Environment variables
 MEMORY_SYNOPSIS_JSON_SCHEMA = {
     "type": "object",
