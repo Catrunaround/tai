@@ -120,16 +120,16 @@ response_data = {
          │
          v
 ┌─────────────────────────────────────────┐
-│ 1. RAG Retrieval                       │
+│ 1. RAG Retrieval                        │
 │    • Get top-k chunks                   │
 │    • Build reference_list:              │
-│      [[topic, url, path, file_uuid,    │
+│      [[topic, url, path, file_uuid,     │
 │        chunk_index], ...]               │
 └────────┬────────────────────────────────┘
          │
          v
 ┌─────────────────────────────────────────┐
-│ 2. Build Prompt                        │
+│ 2. Build Prompt                         │
 │    • Format references as:              │
 │      "Reference Number: 1               │
 │       Document: {chunk_text}"           │
@@ -138,7 +138,7 @@ response_data = {
          │
          v
 ┌─────────────────────────────────────────┐
-│ 3. LLM Generation                      │
+│ 3. LLM Generation                       │
 │    • Returns JSON:                      │
 │      {"answer": "...",                  │
 │       "mentioned_contexts": [           │
@@ -149,17 +149,17 @@ response_data = {
          │
          v
 ┌─────────────────────────────────────────┐
-│ 4. Parse & Enhance                     │
+│ 4. Parse & Enhance                      │
 │    • Extract answer & contexts          │
 │    • Map reference# → file_uuid         │
 │    • Find sentence positions:           │
-│      SentenceCitationService           │
+│      SentenceCitationService            │
 │      .find_sentence_positions()         │
 └────────┬────────────────────────────────┘
          │
          v
 ┌─────────────────────────────────────────┐
-│ 5. Return Enhanced Response            │
+│ 5. Return Enhanced Response             │
 │    • answer: Cleaned text               │
 │    • references: [                      │
 │        {                                │
@@ -168,8 +168,8 @@ response_data = {
 │          "sentences": [                 │
 │            {                            │
 │              "content": "...",          │
-│              "page_index": 2,    ← PDF │
-│              "bbox": [x,y,x,y],  ← PDF │
+│              "page_index": 2,    ← PDF  │
+│              "bbox": [x,y,x,y],  ← PDF  │
 │              "confidence": 1.0          │
 │            }                            │
 │          ]                              │
