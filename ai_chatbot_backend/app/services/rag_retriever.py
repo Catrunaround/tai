@@ -16,8 +16,11 @@ from urllib.parse import quote
 from app.dependencies.model import get_embedding_engine
 embedding_model = get_embedding_engine()
 # Environment Variables
-EMBEDDING_PICKLE_PATH = Path("/home/tai25/bot/tai/ai_chatbot_backend/app/embedding/")
-DB_URI_RO = f"file:{quote('/home/tai25/bot/tai/ai_chatbot_backend/db/metadata.db')}?mode=ro&cache=shared"
+# Get the project root directory (ai_chatbot_backend/)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+EMBEDDING_PICKLE_PATH = _PROJECT_ROOT / "app" / "embedding"
+_METADATA_DB_PATH = _PROJECT_ROOT / "db" / "metadata.db"
+DB_URI_RO = f"file:{quote(str(_METADATA_DB_PATH))}?mode=ro&cache=shared"
 _local = threading.local()
 # SQLDB: whether to use SQL database or Pickle for retrieval.
 SQLDB = True

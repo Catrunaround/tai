@@ -76,7 +76,7 @@ def build_augmented_prompt(
         problem_content: Optional[str] = None,
         answer_content: Optional[str] = None,
         audio_response: bool = False,
-        json_output: bool = False
+        json_output: bool = True
 ) -> Tuple[str, List[Dict], str]:
     """
     Build an augmented prompt by retrieving reference documents.
@@ -128,30 +128,44 @@ def build_augmented_prompt(
     # Create response and reference styles based on audio mode and json_output flag.
     if not audio_response:
         if json_output:
-            # JSON output format
+            # JSON output format with enhanced instructions
             response_style = (
-                f"Output your answer in JSON format with the following structure:\n"
+                f"You MUST output your response in valid JSON format. Here is the required structure:\n\n"
                 f"{{\n"
-                f'  "answer": "Your complete answer here with thorough explanation",\n'
+                f'  "answer": "Your complete answer with thorough explanation",\n'
                 f'  "mentioned_contexts": [\n'
-                f'    {{"reference": 1, "start": "exact quote start", "end": "exact quote end"}},\n'
-                f'    {{"reference": 2, "start": "exact quote start", "end": "exact quote end"}}\n'
+                f'    {{"reference": 1, "start": "exact quote from reference 1", "end": "continuation of quote"}},\n'
+                f'    {{"reference": 2, "start": "exact quote from reference 2", "end": "continuation of quote"}}\n'
                 f"  ]\n"
-                f"}}\n"
-                f"IMPORTANT:\n"
-                f"- The 'answer' field should contain your complete response as a single string.\n"
-                f"- Discuss what each reference is (textbook, lecture notes, etc.) and what it covers.\n"
-                f"- For each reference you use, add an entry in 'mentioned_contexts' with the reference number and the exact text span from that reference.\n"
-                f"- The 'start' and 'end' fields should contain exact quotes from the reference document.\n"
-                f"- Output ONLY valid JSON. Do not add ```json``` code blocks or any text outside the JSON structure."
+                f"}}\n\n"
+                f"CONCRETE EXAMPLE:\n"
+                f"If the user asks 'What is Python indentation?' and Reference 1 says 'Python uses indentation to define code blocks':\n"
+                f"{{\n"
+                f'  "answer": "Python uses indentation (spaces or tabs) to define code blocks, which is different from other languages that use braces. According to Reference 1, this approach makes Python code more readable and enforces consistent formatting.",\n'
+                f'  "mentioned_contexts": [\n'
+                f'    {{"reference": 1, "start": "Python uses indentation", "end": "to define code blocks"}}\n'
+                f"  ]\n"
+                f"}}\n\n"
+                f"CRITICAL REQUIREMENTS:\n"
+                f"1. The 'answer' field contains your complete response as a single string\n"
+                f"2. Discuss what each reference is (textbook, lecture notes, etc.) and what it covers\n"
+                f"3. For EACH reference you mention in your answer, add an entry in 'mentioned_contexts'\n"
+                f"4. The 'reference' field is the reference number (1, 2, 3, etc.)\n"
+                f"5. The 'start' and 'end' fields are exact quotes from the reference document (5-15 words typical)\n"
+                f"6. If you cite no references, use empty array: \"mentioned_contexts\": []\n\n"
+                f"STRICT OUTPUT RULES:\n"
+                f"- DO NOT wrap JSON in markdown code blocks (no ```json```)\n"
+                f"- DO NOT add any text before or after the JSON object\n"
+                f"- DO NOT include explanations outside the JSON structure\n"
+                f"- The first character you output after </think> MUST be the opening brace {{\n"
+                f"- The last character MUST be the closing brace }}\n"
+                f"- Ensure all strings are properly escaped and quotes are balanced\n"
+                f"- Output ONLY the JSON object, nothing else"
             )
             reference_style = (
-                f"\nFor the 'mentioned_contexts' array:\n"
-                f"- Add one object for each reference you cite in your answer.\n"
-                f"- The 'reference' field is the reference number (1, 2, 3, etc.).\n"
-                f"- The 'start' and 'end' fields should be exact text spans from the reference document that support your answer.\n"
-                f"- Keep quotes concise but meaningful (5-15 words typical).\n"
-                f"- If you don't cite any references, use an empty array: []"
+                f"\n\nREMINDER FOR JSON OUTPUT:\n"
+                f"When you finish your analysis after </think>, immediately output the JSON object.\n"
+                f"Start directly with {{ and end with }}. No markdown, no extra text, just pure JSON."
             )
         else:
             # Original markdown format

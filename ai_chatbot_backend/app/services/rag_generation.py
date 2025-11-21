@@ -36,7 +36,7 @@ async def generate_chat_response(
         engine: Any = None,
         audio_response: bool = False,
         sid: Optional[str] = None,
-        json_output: bool = False
+        json_output: bool = True
 ) -> Tuple[Any, List[str | Any]]:
     """
     Build an augmented message with references and run LLM inference.
@@ -130,7 +130,7 @@ def _generate_streaming_response(messages: List[Message], engine: Any = None) ->
     prompt = TOKENIZER.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
     return engine.generate(prompt, SAMPLING, request_id=str(time.time_ns()))
 
-def format_chat_msg(messages: List[Message], json_output: bool = False) -> List[Message]:
+def format_chat_msg(messages: List[Message], json_output: bool = True) -> List[Message]:
     """
     Format a conversation by prepending an initial system message.
     """
@@ -144,8 +144,21 @@ def format_chat_msg(messages: List[Message], json_output: bool = False) -> List[
     )
     if json_output:
         system_message += (
-            "\n\nIMPORTANT: Your final answer (after </think>) MUST be in valid JSON format. "
-            "Do not wrap the JSON in code blocks or add any text outside the JSON structure."
+            "\n\nCRITICAL JSON OUTPUT REQUIREMENT:\n"
+            "Your response must be in JSON format to enable structured parsing, "
+            "reference tracking, and proper citation display in the user interface."
+            "JSON STRUCTURE EXPLANATION:\n"
+            "- 'answer' field: Contains your complete response as a single string with thorough explanation\n"
+            "- 'mentioned_contexts' field: An array tracking which references you cited in your answer\n"
+            "  - 'reference': The reference number (1, 2, 3, etc.) from the provided reference documents\n"
+            "  - 'start': The exact starting quote from that reference (5-15 words typical)\n"
+            "  - 'end': The continuation/ending of the quote from that reference\n"
+            "  - Purpose: Enables precise citation tracking so users can verify your answer against sources\n\n"
+            "RESPONSE STRUCTURE PATTERN:\n"
+            "1. Think through the problem between <think> and </think> tags\n"
+            "2. Immediately after </think>, output ONLY a valid JSON object\n"
+            "3. The JSON object must contain 'answer' and 'mentioned_contexts' fields\n\n"
+            "Detailed format examples and requirements are provided in the following instructions."
         )
     response.append(Message(role="system", content=system_message))
     for message in messages:

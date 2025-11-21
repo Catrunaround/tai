@@ -28,7 +28,7 @@ def extract_channels_oss(text: str) -> dict:
     return result
 
 async def chat_stream_parser(
-        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message]= None,audio_text: str=None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False, json_output: bool = False
+        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message]= None,audio_text: str=None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False, json_output: bool = True
 ) -> AsyncIterator[str]:
     """
     Parse the streaming response from the chat model and yield deltas.
