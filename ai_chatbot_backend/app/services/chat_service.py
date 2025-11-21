@@ -6,9 +6,9 @@ import base64
 import io
 import soundfile as sf
 import numpy as np
+from pathlib import Path
 from openai import OpenAI
-from app.services.rag_postprocess import extract_channels, extract_json_array
-from app.services.rag_generation import enhance_references_v2
+from app.services.rag_postprocess import extract_channels
 
 def extract_channels_oss(text: str) -> dict:
     # 1) Remove the special marker wherever it appears
@@ -28,91 +28,11 @@ def extract_channels_oss(text: str) -> dict:
         result[ch] = msg  # if duplicate channels appear, the last one wins
     return result
 
-
-def extract_answer_from_streaming_json(text: str) -> dict:
-    """
-    Extract clean answer text from streaming JSON without showing JSON syntax.
-    Supports thinking models with <think> tags or thinking sections before JSON.
-
-    This function progressively extracts the 'answer' field value from a JSON object
-    being streamed, hiding JSON syntax and thinking sections from the user.
-
-    Uses the same streaming pattern as extract_channels() for consistency.
-
-    Args:
-        text: Partial or complete text like '<think>reasoning...</think>{"answer": "Python uses..."}'
-
-    Returns:
-        dict with:
-            - 'thinking': Thinking text (before </think>)
-            - 'answer': Clean extracted answer text (empty if not yet extractable)
-            - 'complete': Boolean indicating if JSON is complete
-            - 'mentioned_contexts': List of reference dicts (only when complete)
-    """
-    import json as json_lib
-
-    result = {
-        'thinking': '',
-        'answer': '',
-        'complete': False,
-        'mentioned_contexts': []
-    }
-
-    # Step 1: Extract thinking part using extract_channels pattern
-    if "</think>" in text:
-        parts = text.split("</think>", 1)
-        result['thinking'] = parts[0].strip()
-        json_content = parts[1].strip()
-    else:
-        # Handle incomplete </think> tags (streaming-friendly)
-        incomplete_patterns = ["</think", "</", "<"]
-        cleaned_text = text
-        for pattern in incomplete_patterns:
-            if text.endswith(pattern):
-                cleaned_text = text[:-len(pattern)]
-                break
-        result['thinking'] = cleaned_text.strip()
-        json_content = ""
-
-    # Step 2: Try to parse as complete JSON first
-    if json_content:
-        try:
-            parsed = json_lib.loads(json_content)
-            if isinstance(parsed, dict) and 'answer' in parsed:
-                result['answer'] = parsed['answer']
-                result['complete'] = True
-                result['mentioned_contexts'] = parsed.get('mentioned_contexts', [])
-                return result
-        except (json_lib.JSONDecodeError, ValueError):
-            pass
-
-        # Step 3: If not complete JSON, extract answer field progressively
-        # Match: {"answer": "text content that might be incomplete
-        answer_pattern = re.compile(
-            r'\{\s*"answer"\s*:\s*"((?:[^"\\]|\\.)*)',
-            re.DOTALL
-        )
-
-        match = answer_pattern.search(json_content)
-        if match:
-            # Extract the answer content, unescaping JSON string escapes
-            raw_answer = match.group(1)
-            # Unescape common JSON escapes
-            answer_text = raw_answer.replace(r'\"', '"').replace(r'\\', '\\').replace(r'\n', '\n')
-            result['answer'] = answer_text
-
-    return result
-
 async def chat_stream_parser(
-        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message]= None,audio_text: str=None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False, use_json_array: bool = False, use_simple_json: bool = False
+        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message]= None,audio_text: str=None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False
 ) -> AsyncIterator[str]:
     """
     Parse the streaming response from the chat model and yield deltas.
-
-    Args:
-        use_simple_json: If True, uses clean streaming extraction from JSON format
-                        {"answer": "text", "mentioned_contexts": [{"reference": 1}]}
-                        Streams only the answer text without JSON syntax.
     """
     if audio_text:
         yield sse(AudioTranscript(text=audio_text))
@@ -121,15 +41,9 @@ async def chat_stream_parser(
     text_seq = 0
     voice_seq=0
     audio_messages = []
-
-    # For simple JSON streaming - tracks clean answer text without JSON syntax
-    previous_answer_len = 0
-    json_complete = False
-    final_mentioned_contexts = []
-
     PARTIAL_TAIL_GUARD = re.compile(r"""
     (?ix)
-    (?:                                     # 只要还没到"完整终止"的形态，都算未完成；匹配到结尾
+    (?:                                     # 只要还没到“完整终止”的形态，都算未完成；匹配到结尾
         \[\s*ref(?:erence)?\s*:?\s*         # [Reference: / [Ref / [reference
         (?:\d+(?:\s*(?:,|\band\b|&)\s*\d+)*)?   # 可有部分数字序列
         \s*(?:,|\band\b|&)?                 # 允许以分隔符结尾（说明还没写完下一个数字）
@@ -145,35 +59,8 @@ async def chat_stream_parser(
     """, re.VERBOSE)
     async for output in stream:
         text = output.outputs[0].text
-
-        # Simple JSON format: {"answer": "text", "mentioned_contexts": [{"reference": 1}]}
-        if use_simple_json:
-            # Extract clean answer text from streaming JSON (hides JSON syntax)
-            extracted = extract_answer_from_streaming_json(text)
-            current_answer = extracted['answer']
-
-            # Only stream new content (incremental diff)
-            if len(current_answer) > previous_answer_len:
-                new_chunk = current_answer[previous_answer_len:]
-                previous_answer_len = len(current_answer)
-
-                # Stream the new text chunk to frontend
-                yield sse(ResponseDelta(seq=text_seq, text_channel='final', text=new_chunk))
-                text_seq += 1
-                print(new_chunk, end="", flush=True)
-
-            # When JSON is complete, store data for reference extraction
-            if extracted['complete'] and not json_complete:
-                json_complete = True
-                channels = {'final': current_answer}
-                final_mentioned_contexts = extracted.get('mentioned_contexts', [])
-                # Continue to reference handling below
-            else:
-                continue
-        else:
-            # Use existing extract_channels logic (channel-based format)
-            channels = extract_channels(text)
-
+        channels= extract_channels(text)
+        # print(channels)
         if not channels:
             continue
         chunks= {c: channels[c][len(previous_channels.get(c,"")):] for c in channels if channels[c] != previous_channels.get(c,"")}
@@ -282,74 +169,18 @@ async def chat_stream_parser(
     # full_response_text = TOKENIZER.decode(token, skip_special_tokens=False)
     # print(full_response_text)
 
-    # Handle structured JSON responses - extract BOTH answer AND references, then move to 'final' channel
-    import json as json_lib
-    mentioned_references = set()
-    parsed_json = None
-    original_json_content = None  # Preserve for enhance_references_v2
 
-    # Priority 1: Use final_mentioned_contexts from simple JSON streaming
-    if use_simple_json and final_mentioned_contexts:
-        print(f"[INFO] Using mentioned_contexts from simple JSON format")
-        for ctx in final_mentioned_contexts:
-            if isinstance(ctx, dict) and 'reference' in ctx:
-                mentioned_references.add(int(ctx['reference']))
+    pattern = re.compile(
+        r'(?:\[Reference:\s*([\d,\s]+)\]'
+        r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
+        re.IGNORECASE
+    )
 
-    # Priority 2: Try parsing JSON from channels (backward compatibility)
-    if not mentioned_references:
-        for channel_name in ['analysis', 'final']:
-            channel_content = channels.get(channel_name, '')
-            if channel_content and channel_content.strip().startswith('{'):
-                print(f"\n[DEBUG] Attempting to parse JSON from '{channel_name}' channel...")
-                try:
-                    parsed = json_lib.loads(channel_content)
-                    print(f"[DEBUG] Successfully parsed JSON!")
-                    print(f"[DEBUG] JSON keys: {list(parsed.keys())}")
-                    print(f"[DEBUG] Full JSON structure: {json_lib.dumps(parsed, indent=2)[:500]}...")
-
-                    if isinstance(parsed, dict) and 'answer' in parsed:
-                        parsed_json = parsed
-                        original_json_content = channel_content  # Save original JSON string
-                        answer = parsed['answer']
-                        print(f"\n[INFO] Detected structured JSON in '{channel_name}' channel, extracting answer ({len(answer)} chars)")
-
-                        # Extract reference numbers from mentioned_contexts BEFORE modifying channels
-                        mentioned_contexts = parsed.get('mentioned_contexts', [])
-                        print(f"[DEBUG] mentioned_contexts: {mentioned_contexts}")
-                        for ctx in mentioned_contexts:
-                            if isinstance(ctx, dict) and 'reference' in ctx:
-                                mentioned_references.add(int(ctx['reference']))
-
-                    if mentioned_references:
-                        print(f"[INFO] Extracted {len(mentioned_references)} references from structured JSON")
-
-                    # Now move answer to 'final' channel for proper display
-                    channels['final'] = answer
-                    channels['analysis'] = ''
-                    # Send the answer as a correction to replace the JSON that was streamed
-                    yield sse(ResponseDelta(seq=text_seq, text_channel='final', text=answer))
-                    text_seq += 1
-                    break
-                except (json_lib.JSONDecodeError, ValueError, TypeError) as e:
-                    # Not valid JSON, continue with original content
-                    print(f"[DEBUG] JSON parsing failed: {e}")
-                    pass
-
-    # If no references found in JSON, try regex pattern matching (backward compatibility)
-    if not mentioned_references:
-        pattern = re.compile(
-            r'(?:\[Reference:\s*([\d,\s]+)\]'
-            r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
-            re.IGNORECASE
-        )
-        mentioned_references = {
-            int(n)
-            for m in pattern.finditer(channels['final'])
-            for n in re.findall(r'\d+', m.group(1) or m.group(2))
-        }
-        if mentioned_references:
-            print(f"\n[INFO] Extracted {len(mentioned_references)} references from text pattern")
-
+    mentioned_references = {
+        int(n)
+        for m in pattern.finditer(channels['final'])
+        for n in re.findall(r'\d+', m.group(1) or m.group(2))
+    }
     print(f"\n[INFO] Mentioned references: {mentioned_references}")
     references = []
     max_idx = len(reference_list)
@@ -366,25 +197,6 @@ async def chat_stream_parser(
             ))
     if references:
         yield sse(ResponseReference(references=references))
-
-    # Enhanced sentence-level citations with bbox and page_index
-    try:
-        # Use original JSON if available, otherwise use channels
-        final_response = original_json_content or channels.get('final') or channels.get('analysis', '')
-        answer_text, enhanced_refs = enhance_references_v2(final_response, reference_list)
-
-        # Only send enhanced references if we have sentence-level citations
-        if enhanced_refs and any(ref.get('sentences') for ref in enhanced_refs):
-            print(f"\n[INFO] Sending enhanced citations for {len(enhanced_refs)} references")
-            # Send enhanced references as a separate event
-            # Frontend can use this for precise PDF highlighting
-            yield sse(EnhancedCitations(
-                answer=answer_text,
-                references=enhanced_refs
-            ))
-    except Exception as e:
-        print(f"[WARNING] Failed to enhance citations: {e}")
-        # Continue without enhanced citations (graceful degradation)
 
     yield sse(Done())
     yield "data: [DONE]\n\n"  # Final done message for SSE clients
@@ -425,7 +237,10 @@ async def audio_generator(messages: List[Dict], stream: bool = True, speaker_nam
     """
     Parse the streaming response from the audio model and yield deltas.
     """
-    data_dir = '/home/bot/localgpt/tai/ai_chatbot_backend/voice_prompts'
+    # Dynamic path based on current file location
+    _current_file = Path(__file__).resolve()
+    _backend_root = _current_file.parent.parent.parent  # Navigate up to ai_chatbot_backend/
+    data_dir = str(_backend_root / 'voice_prompts')
     
     # Select voice prompt based on course_code
     if speaker_name == "Professor John DeNero":

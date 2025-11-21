@@ -119,7 +119,6 @@ def build_augmented_prompt(
             url = top_urls[i] if top_urls[i] else ""
             insert_document += (
                 f'Reference Number: {n}\n'
-                f"File UUID: {file_uuid}\n"
                 f"Directory Path to reference file to tell what file is about: {file_path}\n"
                 f"Topic Path of chunk in file to tell the topic of chunk: {topic_path}\n"
                 f'Document: {top_docs[i]}\n\n'

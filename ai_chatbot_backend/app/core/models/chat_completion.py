@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal, Dict
+from typing import List, Optional, Literal
 from uuid import UUID
 import time
 from pydantic import BaseModel, Field, ConfigDict
@@ -39,13 +39,6 @@ class ResponseReference(BaseEvt):
     model_config = ConfigDict(extra="forbid")
     type: Literal["response.reference"] = "response.reference"
     references: List[Reference] = Field(default_factory=list, min_items=1)
-
-class EnhancedCitations(BaseEvt):
-    """Enhanced citations with sentence-level details including bbox and page_index"""
-    model_config = ConfigDict(extra="forbid")
-    type: Literal["response.enhanced_citations"] = "response.enhanced_citations"
-    answer: str = Field(..., description="Extracted answer text from LLM")
-    references: List[Dict] = Field(default_factory=list, description="Enhanced references with sentence citations")
 
 class AudioTranscript(BaseEvt):
     model_config = ConfigDict(extra="forbid")
@@ -88,8 +81,6 @@ class GeneralCompletionParams(BaseModel):
     rag: Optional[bool] = True
     audio_response: Optional[bool] = False
     sid: Optional[str] = None  # chat_history_sid from frontend
-    use_json_array: Optional[bool] = False  # Enable JSON array extraction (legacy)
-    use_simple_json: Optional[bool] = False  # Enable simple JSON format with clean streaming
 
 class FileCompletionParams(BaseModel):
     """
@@ -104,8 +95,6 @@ class FileCompletionParams(BaseModel):
     audio_response: Optional[bool] = False
     sid: Optional[str] = None  # chat_history_sid from frontend
     user_focus: UserFocus
-    use_json_array: Optional[bool] = False  # Enable JSON array extraction (legacy)
-    use_simple_json: Optional[bool] = False  # Enable simple JSON format with clean streaming
 
 class PracticeCompletionParams(BaseModel):
     """
@@ -122,8 +111,6 @@ class PracticeCompletionParams(BaseModel):
     answer_content: str
     problem_id: str
     file_path: str
-    use_json_array: Optional[bool] = False  # Enable JSON array extraction (legacy)
-    use_simple_json: Optional[bool] = False  # Enable simple JSON format with clean streaming
 
 class VoiceTranscriptParams(BaseModel):
     audio: VoiceMessage

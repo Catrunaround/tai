@@ -14,12 +14,13 @@ from contextlib import contextmanager
 from urllib.parse import quote
 # Local libraries; import and initialize the embedding model from app dependencies.
 from app.dependencies.model import get_embedding_engine
-from app.core.dbs.metadata_db import get_metadata_db
-from app.core.models.metadata import FileModel
 embedding_model = get_embedding_engine()
-# Environment Variables
-EMBEDDING_PICKLE_PATH = Path("/home/tai25/bot/tai/ai_chatbot_backend/app/embedding/")
-DB_URI_RO = f"file:{quote('/home/bot/localgpt/tai/ai_chatbot_backend/db/metadata.db')}?mode=ro&cache=shared"
+# Environment Variables - Dynamic paths based on current file location
+_CURRENT_FILE = Path(__file__).resolve()
+_BACKEND_ROOT = _CURRENT_FILE.parent.parent.parent  # Navigate up to ai_chatbot_backend/
+EMBEDDING_PICKLE_PATH = _BACKEND_ROOT / "app" / "embedding"
+_DB_PATH = _BACKEND_ROOT / "db" / "metadata.db"
+DB_URI_RO = f"file:{quote(str(_DB_PATH))}?mode=ro&cache=shared"
 _local = threading.local()
 # SQLDB: whether to use SQL database or Pickle for retrieval.
 SQLDB = True
@@ -272,66 +273,6 @@ def _get_references_from_pickle(
     # TODO: Add top_titles if available in the pickle file
     top_titles = []
     return top_ids, top_docs, top_urls, similarity_scores, top_files, top_topic_paths, top_titles
-
-
-def get_sentence_mapping_by_file_uuid(file_uuid: str) -> Optional[List[Dict[str, Any]]]:
-    """
-    Get sentence mapping for a file by its UUID.
-
-    Args:
-        file_uuid: The UUID of the file
-
-    Returns:
-        List of sentence mapping blocks or None if not available
-    """
-    try:
-        db = get_metadata_db()
-        with db.get_session() as session:
-            file_model = session.query(FileModel).filter(
-                FileModel.uuid == file_uuid
-            ).first()
-
-            if not file_model:
-                return None
-
-            return file_model.get_sentence_mapping()
-    except Exception as e:
-        print(f"[ERROR] Failed to get sentence mapping for file {file_uuid}: {e}")
-        return None
-
-
-def get_file_info_by_uuid(file_uuid: str) -> Optional[Dict[str, Any]]:
-    """
-    Get basic file information by UUID.
-
-    Args:
-        file_uuid: The UUID of the file
-
-    Returns:
-        Dict with file info or None if not found
-    """
-    try:
-        db = get_metadata_db()
-        with db.get_session() as session:
-            file_model = session.query(FileModel).filter(
-                FileModel.uuid == file_uuid
-            ).first()
-
-            if not file_model:
-                return None
-
-            return {
-                "uuid": file_model.uuid,
-                "file_name": file_model.file_name,
-                "relative_path": file_model.relative_path,
-                "url": file_model.url,
-                "course_code": file_model.course_code,
-                "course_name": file_model.course_name,
-                "has_sentence_mapping": file_model.get_sentence_mapping() is not None
-            }
-    except Exception as e:
-        print(f"[ERROR] Failed to get file info for {file_uuid}: {e}")
-        return None
 
 
 def _get_pickle_and_class(course: str) -> str:

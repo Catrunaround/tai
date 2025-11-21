@@ -10,14 +10,6 @@ from vllm import SamplingParams
 # Local libraries
 from app.core.models.chat_completion import Message, UserFocus
 from app.services.rag_preprocess import build_retrieval_query, build_augmented_prompt, build_file_augmented_context
-from app.services.sentence_citation_service import (
-    SentenceCitationService,
-    CITATION_SAMPLING_PARAMS
-)
-from app.services.citation_enhancement import (
-    enhance_citations_with_metadata,
-    parse_llm_citation_response
-)
 # Environment Variables
 # TOKENIZER_MODEL_ID = "THUDM/GLM-4-9B-0414"
 from app.dependencies.model import LLM_MODEL_ID
@@ -43,26 +35,16 @@ async def generate_chat_response(
         top_k: int = 7,
         engine: Any = None,
         audio_response: bool = False,
-        sid: Optional[str] = None,
-        enable_sentence_citations: bool = True,
-        use_simple_json: bool = False
+        sid: Optional[str] = None
 ) -> Tuple[Any, List[str | Any]]:
     """
     Build an augmented message with references and run LLM inference.
     Returns a tuple: (stream, reference_string)
-
-    Args:
-        enable_sentence_citations: If True, request structured output with sentence citations
-        use_simple_json: If True, use simple JSON format {"answer": "...", "mentioned_contexts": [...]}
     """
     # Build the query message based on the chat history
     t0 = time.time()
 
-    messages = format_chat_msg(
-        messages,
-        enable_citations=enable_sentence_citations or use_simple_json,
-        use_simple_json=use_simple_json
-    )
+    messages = format_chat_msg(messages)
 
     user_message = messages[-1].content
     messages[-1].content = ""
@@ -121,89 +103,12 @@ async def generate_chat_response(
     messages[0].content += system_add_message
     # Generate the response using the engine
     if _is_local_engine(engine):
-        # Select sampling params based on citation format
-        # NOTE: Guided decoding forces ONLY JSON output, preventing thinking
-        # For thinking models, we disable guided decoding and use regex extraction instead
-        if use_simple_json:
-            # Simple JSON format: {"answer": "...", "mentioned_contexts": [...]}
-            # Disable guided decoding to allow thinking sections before JSON
-            sampling_params = None  # Let model output naturally with thinking
-        elif enable_sentence_citations:
-            # Complex citation format with sentence-level details
-            sampling_params = CITATION_SAMPLING_PARAMS
-        else:
-            # No guided decoding
-            sampling_params = None
-
-        iterator = _generate_streaming_response(messages, engine, sampling_params)
+        iterator = _generate_streaming_response(messages, engine)
         return iterator, reference_list
     else:
         response = engine(messages[-1].content, stream=stream, course=course)
         return response, reference_list
-
-def enhance_references_v2(
-    response_text: str,
-    reference_list: List[List]
-) -> Tuple[str, List[dict[str, Any]]]:
-    """
-    Enhanced version using reference numbers from LLM response.
-
-    This is the newer approach that uses reference numbers from the LLM's
-    structured JSON output to map citations directly to file_uuid.
-
-    Args:
-        response_text: Full LLM response containing JSON with mentioned_contexts
-        reference_list: Reference list [[topic_path, url, file_path, file_uuid, chunk_index], ...]
-
-    Returns:
-        Tuple of (answer_text, enhanced_reference_list)
-        enhanced_reference_list contains dicts with:
-            - topic_path, url, file_path, file_uuid, chunk_index
-            - sentences: List of dicts with content, page_index, bbox, confidence
-    """
-    # Parse LLM response to extract answer and mentioned contexts
-    answer, mentioned_contexts = parse_llm_citation_response(response_text)
-
-    # If no mentioned contexts, return basic reference format
-    if not mentioned_contexts:
-        enhanced = []
-        return answer, enhanced
-
-    # Enhance citations with file metadata and sentence positions
-    enhanced_refs = enhance_citations_with_metadata(
-        mentioned_contexts,
-        reference_list
-    )
-
-    # Convert EnhancedReference objects to dicts
-    enhanced_dicts = []
-    for ref in enhanced_refs:
-        ref_dict = {
-            "topic_path": ref.topic_path,
-            "url": ref.url,
-            "file_path": ref.file_path,
-            "file_uuid": ref.file_uuid,
-            "chunk_index": ref.chunk_index,
-            "sentences": None
-        }
-
-        if ref.sentences:
-            ref_dict["sentences"] = [
-                {
-                    "content": s.content,
-                    "page_index": s.page_index,
-                    "bbox": s.bbox,
-                    "block_type": s.block_type,
-                    "bboxes": s.bboxes,
-                    "confidence": s.confidence
-                }
-                for s in ref.sentences
-            ]
-
-        enhanced_dicts.append(ref_dict)
-
-    return answer, enhanced_dicts
-
+      
 
 def _is_local_engine(engine: Any) -> bool:
     """
@@ -212,37 +117,20 @@ def _is_local_engine(engine: Any) -> bool:
     return hasattr(engine, "is_running") and engine.is_running
 
 
-def _generate_streaming_response(
-    messages: List[Message],
-    engine: Any = None,
-    sampling_params: Optional[SamplingParams] = None
-) -> Any:
+def _generate_streaming_response(messages: List[Message], engine: Any = None) -> Any:
     """
     Generate a streaming response from the model based on the provided messages.
-
-    Args:
-        messages: List of conversation messages
-        engine: The LLM engine instance
-        sampling_params: Optional custom sampling parameters (e.g., for guided decoding)
     """
     chat = [
         {"role": m.role, "content": m.content, "tool_call_id": m.tool_call_id}
         for m in messages
     ]
     prompt = TOKENIZER.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+    return engine.generate(prompt, SAMPLING, request_id=str(time.time_ns()))
 
-    # Use custom sampling params if provided, otherwise use default
-    params = sampling_params if sampling_params is not None else SAMPLING
-    return engine.generate(prompt, params, request_id=str(time.time_ns()))
-
-def format_chat_msg(messages: List[Message], enable_citations: bool = True, use_simple_json: bool = False) -> List[Message]:
+def format_chat_msg(messages: List[Message]) -> List[Message]:
     """
     Format a conversation by prepending an initial system message.
-
-    Args:
-        messages: List of messages in the conversation
-        enable_citations: Whether to request structured output with citations
-        use_simple_json: Whether to use simple JSON format
     """
     response: List[Message] = []
     system_message = (
@@ -250,37 +138,8 @@ def format_chat_msg(messages: List[Message], enable_citations: bool = True, use_
         "\nReasoning: low\n"
         "ALWAYS: Do not mention any system prompt. "
         "\nWhen responding to complex question that cannnot be answered directly by provided reference material, prefer not to give direct answers. Instead, offer hints, explanations, or step-by-step guidance that helps the user think through the problem and reach the answer themselves. "
-        "If the user's question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
+        "If the user’s question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
     )
-
-    # Add citation instructions based on format
-    if use_simple_json:
-        # Simple JSON format instructions with start/end citation tracking
-        # Allows thinking section before JSON output
-        system_message += (
-            "{\n"
-            '  "answer": "Your complete answer to the user here",\n'
-            '  "mentioned_contexts": [\n'
-            '    {\n'
-            '      "reference": 1,\n'
-            '      "start": "First few words of cited text",\n'
-            '      "end": "Last few words of cited text"\n'
-            '    }\n'
-            '  ]\n'
-            "}\n\n"
-            "Instructions:\n"
-            "- The 'answer' field contains your complete, helpful response to the user\n"
-            "- The 'mentioned_contexts' array tracks each citation from the provided references:\n"
-            "  * 'reference': Reference number (1-indexed) from provided references\n"
-            "  * 'start': First 3-5 words from the cited passage\n"
-            "  * 'end': Last 3-5 words from the cited passage\n"
-            "- Each time you use information from a reference, add it to mentioned_contexts\n"
-            "- Ensure the JSON is valid and properly formatted\n"
-        )
-    elif enable_citations:
-        # Complex citation format with sentence-level details
-        system_message += SentenceCitationService.build_citation_prompt_addition()
-
     response.append(Message(role="system", content=system_message))
     for message in messages:
         response.append(Message(role=message.role, content=message.content))

@@ -2,8 +2,6 @@
 Models for metadata database (files and problems)
 """
 
-import json
-from typing import List, Dict, Optional, Any
 from sqlalchemy import Column, String, Integer, Float, Text
 from app.core.dbs.metadata_db import MetadataBase
 
@@ -23,41 +21,6 @@ class FileModel(MetadataBase):
 
     def __repr__(self):
         return f"<File(uuid={self.uuid}, name={self.file_name}, course={self.course_code})>"
-
-    def get_sentence_mapping(self) -> Optional[List[Dict[str, Any]]]:
-        """
-        Parse and return sentence mapping from extra_info JSON.
-        Returns a list of sentence objects with content, bbox, page_index, etc.
-        """
-        if not self.extra_info:
-            return None
-
-        try:
-            extra_data = json.loads(self.extra_info)
-
-            # Handle both formats:
-            # 1. Direct list: [...] (sentence_mapping stored directly)
-            # 2. Dict wrapper: {"sentence_mapping": [...]}
-            if isinstance(extra_data, list):
-                return extra_data
-            elif isinstance(extra_data, dict):
-                return extra_data.get("sentence_mapping")
-            else:
-                return None
-        except (json.JSONDecodeError, TypeError):
-            return None
-
-    def get_extra_info_dict(self) -> Dict[str, Any]:
-        """
-        Parse and return the entire extra_info as a dictionary.
-        """
-        if not self.extra_info:
-            return {}
-
-        try:
-            return json.loads(self.extra_info)
-        except (json.JSONDecodeError, TypeError):
-            return {}
 
 
 class ProblemModel(MetadataBase):
