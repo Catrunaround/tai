@@ -161,9 +161,266 @@ def process_courses_from_master_config(
         raise
 
 
+def convert_all_courses(
+    master_config_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Convert all courses marked for update in the master configuration file.
+
+    This function reads the master config, finds courses with needs_update=true
+    and enabled=true, and converts all files in those directories WITHOUT
+    creating embeddings. Use embed_all_courses() separately for embeddings.
+
+    Args:
+        master_config_path: Path to the master configuration file.
+                          Defaults to 'configs/courses_master_config.yaml'
+
+    Returns:
+        Dictionary containing conversion statistics:
+            - courses_processed: List of successfully converted course names
+            - courses_failed: List of courses that failed conversion
+            - stats_by_course: Per-course statistics dict
+            - total_files_processed: Total number of files converted
+            - total_files_failed: Total number of files that failed
+
+    Example:
+        >>> result = convert_all_courses()
+        >>> print(f"Converted: {result['courses_processed']}")
+        >>> print(f"Total files: {result['total_files_processed']}")
+    """
+    import time
+    from datetime import datetime
+
+    # Default master config path
+    if master_config_path is None:
+        master_config_path = str(Path(__file__).parent / "configs" / "courses_master_config.yaml")
+
+    stats = {
+        "courses_processed": [],
+        "courses_failed": [],
+        "stats_by_course": {},
+        "total_files_processed": 0,
+        "total_files_failed": 0
+    }
+
+    try:
+        master_config = load_yaml(master_config_path)
+        courses = master_config.get("courses", {})
+
+        # Find courses needing update
+        courses_to_process = []
+        for course_name, course_info in courses.items():
+            if course_info.get("needs_update", False) and course_info.get("enabled", True):
+                config_path = course_info.get("config_path")
+                if config_path and Path(config_path).exists():
+                    courses_to_process.append((course_name, config_path))
+                else:
+                    logger.warning(f"Config path not found for course {course_name}: {config_path}")
+                    stats["courses_failed"].append(course_name)
+
+        if not courses_to_process:
+            logger.info("No courses marked for update")
+            return stats
+
+        logger.info(f"Found {len(courses_to_process)} courses to convert: {[c[0] for c in courses_to_process]}")
+
+        # Process each course
+        for course_name, config_path in courses_to_process:
+            start_time = time.time()
+            try:
+                logger.info(f"Converting course: {course_name}")
+
+                # Convert without auto-embedding
+                _convert_directory(config_path, auto_embed=False)
+
+                # Get statistics from the course config
+                course_config = load_yaml(config_path)
+                db_path = course_config.get("db_path")
+
+                course_stats = {
+                    "files_processed": 0,
+                    "files_failed": 0,
+                    "time_seconds": round(time.time() - start_time, 2)
+                }
+
+                # Try to get file count from database
+                if db_path and Path(db_path).exists():
+                    try:
+                        import sqlite3
+                        conn = sqlite3.connect(db_path)
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT COUNT(*) FROM file")
+                        course_stats["files_processed"] = cursor.fetchone()[0]
+                        conn.close()
+                    except Exception as e:
+                        logger.warning(f"Could not get file count from {db_path}: {e}")
+
+                stats["stats_by_course"][course_name] = course_stats
+                stats["total_files_processed"] += course_stats["files_processed"]
+                stats["courses_processed"].append(course_name)
+
+                # Update master config for this course
+                courses[course_name]["needs_update"] = False
+                courses[course_name]["last_updated"] = datetime.now().isoformat()
+
+                logger.info(f"Completed conversion for {course_name} in {course_stats['time_seconds']}s")
+
+            except Exception as e:
+                logger.error(f"Error converting course {course_name}: {str(e)}")
+                stats["courses_failed"].append(course_name)
+                stats["stats_by_course"][course_name] = {"error": str(e)}
+
+        # Save updated master config
+        save_yaml(master_config, master_config_path)
+        logger.info(f"Updated master config with conversion timestamps")
+
+        logger.info(f"Conversion completed. Processed: {len(stats['courses_processed'])}, Failed: {len(stats['courses_failed'])}")
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error in convert_all_courses: {str(e)}")
+        raise
+
+
 # ========================
 # Embedding Functions
 # ========================
+
+def embed_all_courses(
+    master_config_path: Optional[str] = None,
+    force_recompute: bool = False
+) -> Dict[str, Any]:
+    """
+    Create embeddings for all enabled courses in the master configuration file.
+
+    This function creates BOTH chunk embeddings (chunks.vector) and file embeddings
+    (file.vector) for all enabled courses. It processes all courses regardless of
+    their needs_update status.
+
+    Args:
+        master_config_path: Path to the master configuration file.
+                          Defaults to 'configs/courses_master_config.yaml'
+        force_recompute: Whether to regenerate existing embeddings (default: False)
+
+    Returns:
+        Dictionary containing embedding statistics:
+            - courses_embedded: List of successfully embedded course names
+            - courses_failed: List of courses that failed embedding
+            - stats_by_course: Per-course embedding statistics
+            - total_chunks_embedded: Total number of chunks embedded
+            - total_files_embedded: Total number of files embedded
+            - total_errors: Total number of errors encountered
+
+    Example:
+        >>> result = embed_all_courses()
+        >>> print(f"Embedded: {result['courses_embedded']}")
+        >>> print(f"Total chunks: {result['total_chunks_embedded']}")
+    """
+    import time
+
+    # Default master config path
+    if master_config_path is None:
+        master_config_path = str(Path(__file__).parent / "configs" / "courses_master_config.yaml")
+
+    stats = {
+        "courses_embedded": [],
+        "courses_failed": [],
+        "stats_by_course": {},
+        "total_chunks_embedded": 0,
+        "total_files_embedded": 0,
+        "total_errors": 0
+    }
+
+    try:
+        master_config = load_yaml(master_config_path)
+        courses = master_config.get("courses", {})
+
+        # Find all enabled courses
+        courses_to_embed = []
+        for course_name, course_info in courses.items():
+            if course_info.get("enabled", True):
+                config_path = course_info.get("config_path")
+                if config_path and Path(config_path).exists():
+                    courses_to_embed.append((course_name, config_path))
+                else:
+                    logger.warning(f"Config path not found for course {course_name}: {config_path}")
+                    stats["courses_failed"].append(course_name)
+
+        if not courses_to_embed:
+            logger.info("No enabled courses found for embedding")
+            return stats
+
+        logger.info(f"Found {len(courses_to_embed)} courses to embed: {[c[0] for c in courses_to_embed]}")
+
+        # Process each course
+        for course_name, config_path in courses_to_embed:
+            start_time = time.time()
+            try:
+                logger.info(f"Creating embeddings for course: {course_name}")
+
+                # Load course config to get db_path and output_dir
+                course_config = load_yaml(config_path)
+                db_path = course_config.get("db_path")
+                output_dir = course_config.get("output_dir")
+                course_code = course_config.get("course_code", course_name)
+
+                if not db_path or not Path(db_path).exists():
+                    logger.warning(f"Database not found for course {course_name}: {db_path}")
+                    stats["courses_failed"].append(course_name)
+                    continue
+
+                course_stats = {
+                    "chunks_embedded": 0,
+                    "files_embedded": 0,
+                    "errors": 0,
+                    "time_seconds": 0
+                }
+
+                # Step 1: Create chunk embeddings
+                logger.info(f"Creating chunk embeddings for {course_name}...")
+                embedding_create(db_path, course_code)
+
+                # Step 2: Create file embeddings
+                if output_dir and Path(output_dir).exists():
+                    logger.info(f"Creating file embeddings for {course_name}...")
+                    file_results = embed_files_from_markdown(
+                        db_path=db_path,
+                        data_dir=output_dir,
+                        course_filter=course_code,
+                        force_recompute=force_recompute
+                    )
+                    course_stats["errors"] = file_results.get("errors", 0)
+                else:
+                    logger.warning(f"Output dir not found for {course_name}, skipping file embeddings")
+                    course_stats["errors"] += 1
+
+                # Get final statistics
+                embed_status = check_embedding_status(db_path, course_code)
+                course_stats["chunks_embedded"] = embed_status.get("chunks_embedded", 0)
+                course_stats["files_embedded"] = embed_status.get("files_embedded", 0)
+                course_stats["time_seconds"] = round(time.time() - start_time, 2)
+
+                stats["stats_by_course"][course_name] = course_stats
+                stats["total_chunks_embedded"] += course_stats["chunks_embedded"]
+                stats["total_files_embedded"] += course_stats["files_embedded"]
+                stats["total_errors"] += course_stats["errors"]
+                stats["courses_embedded"].append(course_name)
+
+                logger.info(f"Completed embeddings for {course_name}: {course_stats['chunks_embedded']} chunks, {course_stats['files_embedded']} files in {course_stats['time_seconds']}s")
+
+            except Exception as e:
+                logger.error(f"Error embedding course {course_name}: {str(e)}")
+                stats["courses_failed"].append(course_name)
+                stats["stats_by_course"][course_name] = {"error": str(e)}
+                stats["total_errors"] += 1
+
+        logger.info(f"Embedding completed. Processed: {len(stats['courses_embedded'])}, Failed: {len(stats['courses_failed'])}")
+        return stats
+
+    except Exception as e:
+        logger.error(f"Error in embed_all_courses: {str(e)}")
+        raise
+
 
 def create_embeddings_for_course(
     db_path: str,
@@ -302,148 +559,46 @@ def _infer_data_dir_from_db(db_path: str, course_code: str) -> Optional[str]:
         return None
 
 
-# Removed create_embeddings_batch() - use create_embeddings_for_course() in a loop instead
-# Removed process_course_pipeline() - use convert_directory() + merge separately for clarity
-
-
-# ========================
-# Utility Functions
-# ========================
-
-def get_processing_status(db_path: str) -> Dict[str, Any]:
-    """
-    Get detailed processing status for a course database.
-
-    This is a simplified wrapper around check_embedding_status() that adds
-    database existence checking and error handling.
-
-    Args:
-        db_path: Path to course database
-
-    Returns:
-        Dictionary with processing status including all embedding statistics
-
-    Example:
-        >>> status = get_processing_status("data/CS61A_metadata.db")
-        >>> print(f"Files: {status['files_embedded']}/{status['total_files']}")
-        >>> print(f"Chunks: {status['chunks_embedded']}/{status['total_chunks']}")
-    """
-    try:
-        if not Path(db_path).exists():
-            return {
-                "error": "Database not found",
-                "database_path": db_path,
-                "database_exists": False
-            }
-
-        # Get comprehensive embedding status
-        status = check_embedding_status(db_path)
-        status["database_path"] = db_path
-        status["database_exists"] = True
-
-        return status
-
-    except Exception as e:
-        logger.error(f"Error getting processing status: {str(e)}")
-        return {
-            "error": str(e),
-            "database_path": db_path,
-            "database_exists": Path(db_path).exists()
-        }
-
-
-# ========================
-# Database Validation Functions
-# ========================
-
-def validate_database_integrity(
-    db_path: str,
-    verbose: bool = True,
-    save_report: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Validate database integrity and check for null columns.
-
-    This function performs comprehensive validation of the database to identify:
-    - Columns that are completely NULL (indicating processing errors)
-    - Empty tables
-    - Missing embeddings
-    - Orphaned records
-
-    Args:
-        db_path: Path to the database to validate
-        verbose: Whether to print detailed report to console (default: True)
-        save_report: Optional path to save the validation report
-
-    Returns:
-        Dictionary containing:
-            - null_columns: List of columns that are completely NULL
-            - empty_tables: List of empty tables
-            - integrity_issues: Count of integrity issues found
-            - embedding_status: Embedding completeness statistics
-            - has_critical_issues: Boolean indicating if critical issues exist
-            - report: Full text report (if verbose=True)
-
-    Example:
-        >>> validation = validate_database_integrity(
-        ...     "data/collective_metadata.db",
-        ...     verbose=True,
-        ...     save_report="validation_report.txt"
-        ... )
-        >>> if validation["has_critical_issues"]:
-        ...     print("Critical issues found!")
-        ...     for col in validation["null_columns"]:
-        ...         print(f"  - {col['table']}.{col['column']} is completely NULL")
-    """
-    from file_conversion_router.utils.database_validator import DatabaseValidator
-
-    try:
-        validator = DatabaseValidator(db_path)
-
-        # Run comprehensive checks
-        integrity_results = validator.check_database_integrity()
-        embedding_results = validator.check_embedding_completeness()
-
-        # Generate report if requested
-        report_text = ""
-        if verbose or save_report:
-            report_text = validator.generate_report(save_report)
-            if verbose:
-                print(report_text)
-
-        # Prepare summary for return
-        validation_summary = {
-            "database_path": db_path,
-            "null_columns": integrity_results.get("null_columns", []),
-            "empty_tables": integrity_results.get("empty_tables", []),
-            "warnings": integrity_results.get("warnings", []),
-            "statistics": integrity_results.get("statistics", {}),
-            "embedding_status": {
-                "files": embedding_results.get("files", {}),
-                "chunks": embedding_results.get("chunks", {}),
-                "issues": embedding_results.get("issues", [])
-            },
-            "has_critical_issues": len(integrity_results.get("null_columns", [])) > 0,
-            "integrity_issues": len(integrity_results.get("warnings", [])),
-            "report": report_text if verbose else None
-        }
-
-        # Log summary
-        logger.info(f"Database validation completed for: {db_path}")
-        logger.info(f"  - NULL columns found: {len(validation_summary['null_columns'])}")
-        logger.info(f"  - Empty tables found: {len(validation_summary['empty_tables'])}")
-        logger.info(f"  - Total warnings: {validation_summary['integrity_issues']}")
-
-        return validation_summary
-
-    except Exception as e:
-        logger.error(f"Error validating database: {str(e)}")
-        raise
-
-
 # ========================
 # Database Merging Functions
 # ========================
+
+def merge_to_collective(
+    master_config_path: Optional[str] = None,
+    exclude_test: bool = True,
+    check_embeddings: bool = True
+) -> Dict[str, Any]:
+    """
+    Merge all course databases into the collective database.
+
+    This function merges all enabled course databases into a single collective
+    database for unified RAG queries. Use this after convert_all_courses() and
+    embed_all_courses() to consolidate all course data.
+
+    Args:
+        master_config_path: Path to the master configuration file.
+                          Defaults to 'configs/courses_master_config.yaml'
+        exclude_test: Whether to exclude test/demo databases (default: True)
+        check_embeddings: Whether to validate embeddings before merge (default: True)
+
+    Returns:
+        Dictionary containing merge statistics:
+            - merge_stats: Per-database merge statistics
+            - excluded_courses: List of excluded course names
+            - included_courses: List of included course names
+            - embedding_stats: Embedding statistics (if check_embeddings=True)
+
+    Example:
+        >>> result = merge_to_collective(exclude_test=True)
+        >>> print(f"Merged: {result['included_courses']}")
+        >>> print(f"Excluded: {result['excluded_courses']}")
+    """
+    return merge_course_databases_from_master_config(
+        master_config_path=master_config_path,
+        exclude_test=exclude_test,
+        check_embeddings=check_embeddings
+    )
+
 
 def merge_course_databases_with_stats(
     master_config_path: Optional[str] = None,
@@ -487,10 +642,15 @@ def merge_course_databases_with_stats(
 
 # Public API exports
 __all__ = [
-    # === Core Workflow Functions ===
-    'convert_directory',                    # Step 1: Convert documents
-    'process_courses_from_master_config',   # Step 2: Batch convert
-    'merge_course_databases_with_stats',    # Step 3: Merge databases (recommended)
+    # === Core Workflow Functions (Recommended) ===
+    'convert_all_courses',                  # Step 1: Convert all courses needing update
+    'embed_all_courses',                    # Step 2: Embed all enabled courses
+    'merge_to_collective',                  # Step 3: Merge to collective database
+
+    # === Single Course Functions ===
+    'convert_directory',                    # Convert single course
+    'process_courses_from_master_config',   # Legacy batch convert (deprecated)
+    'merge_course_databases_with_stats',    # Legacy merge (use merge_to_collective)
 
     # === Course Management ===
     'update_master_config_status',
@@ -509,10 +669,6 @@ __all__ = [
     'check_embedding_status',               # Check both chunk and file embeddings
     'create_embeddings_for_course',         # Create ALL embeddings (chunks + files)
 
-    # === Utility Functions ===
-    'get_processing_status',                # Simple status check
-    'validate_database_integrity',          # Comprehensive validation
-
     # === YAML utilities ===
     'load_yaml',
     'save_yaml',
@@ -530,49 +686,31 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # ===== RECOMMENDED WORKFLOW =====
+    # ===== RECOMMENDED WORKFLOW (3 separate steps) =====
 
-    # Step 1: Convert and embed a single course
-    convert_directory(
-        "/home/bot/bot/yk/YK_final/course_yaml/CS 61A_config.yaml",
-        auto_embed=True
-    )
+    # Step 1: Convert all courses marked for update (no embedding)
+    # convert_result = convert_all_courses()
+    # print(f"Converted: {convert_result['courses_processed']}")
+    # print(f"Total files: {convert_result['total_files_processed']}")
 
-    # # Step 2: Process all courses marked for update (batch)
-    # results = process_courses_from_master_config(auto_embed=True)
-    # print(f"Processed courses: {results['courses_processed']}")
+    # Step 2: Embed all enabled courses
+    # embed_result = embed_all_courses()
+    # print(f"Embedded: {embed_result['courses_embedded']}")
+    # print(f"Total chunks: {embed_result['total_chunks_embedded']}")
 
-    # Step 3: Merge all courses into collective database
-    # results = merge_course_databases_with_stats(
-    #     exclude_test=True,      # Skip test/demo databases
-    #     check_embeddings=True   # Validates and fixes missing embeddings before merge
+    # Step 3: Merge to collective database (only when ready)
+    # merge_result = merge_to_collective(exclude_test=True)
+    # print(f"Merged: {merge_result['included_courses']}")
+
+    # ===== SINGLE COURSE WORKFLOW =====
+
+    # Convert and embed a single course
+    # convert_directory(
+    #     "/home/bot/bot/yk/YK_final/course_yaml/CS 294-137_config.yaml",
+    #     auto_embed=True
     # )
-    # print(f"Merged {len(results['included_courses'])} courses")
-    # print(f"Embedding completeness: {results['embedding_stats']['overall']}")
 
-
-    # Create embeddings for existing course (if missing)
-    # stats = create_embeddings_for_course(
-    #     db_path="data/CS61A_metadata.db",
-    #     course_code="CS61A",
-    #     data_dir=None,  # Auto-infers from config
-    #     force_recompute=False
-    # )
-    # print(f"Embeddings: {stats['files_embedded']} files, {stats['chunks_embedded']} chunks")
-
-    # Check processing status
-    # status = get_processing_status("data/CS61A_metadata.db")
-    # print(f"Files: {status['files_embedded']}/{status['total_files']}")
-    # print(f"Chunks: {status['chunks_embedded']}/{status['total_chunks']}")
-
-    # Validate database integrity
-    # validation = validate_database_integrity(
-    #     "data/collective_metadata.db",
-    #     verbose=True,
-    #     save_report="validation_report.txt"
-    # )
-    # if validation["has_critical_issues"]:
-    #     print("Critical issues found!")
+    # ===== UTILITY FUNCTIONS =====
 
     # Mark a course for re-processing
     # mark_course_for_update("CS61A")
@@ -581,6 +719,4 @@ if __name__ == "__main__":
     # courses = get_courses_needing_update()
     # print(f"Courses needing update: {[c['name'] for c in courses]}")
 
-    # logger.info("Starting batch processing with auto-embedding...")
-    # results = process_courses_from_master_config(auto_embed=True)
-    # logger.info(f"Batch processing completed: {results}")
+    pass

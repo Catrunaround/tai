@@ -127,8 +127,43 @@ def embedding_create(db_path, embedding_name=None, ):
     logging.info("Model loaded successfully")
 
     logging.info(f"Encoding {len(hp_list)} chunks...")
-    dense = np.asarray(model.encode(hp_list))
+
+    # Encode with OOM retry logic
+    import torch
+    import gc
+    dense = None
+    for attempt in range(2):
+        try:
+            dense = np.asarray(model.encode(hp_list))
+            break
+        except RuntimeError as oom_error:
+            if "CUDA out of memory" in str(oom_error) and attempt == 0:
+                logging.warning("OOM error during encoding, clearing GPU memory and retrying...")
+                del model
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                # Reload model
+                model = SentenceTransformer(
+                    "Qwen/Qwen3-Embedding-4B",
+                    model_kwargs=model_kwargs,
+                    tokenizer_kwargs={"padding_side": "left"},
+                )
+                logging.info("Model reloaded, retrying encoding...")
+            else:
+                raise
+
+    if dense is None:
+        raise RuntimeError("Failed to generate embeddings after retry")
+
     logging.info(f"Encoding complete. Generated embeddings shape: {dense.shape}")
+
+    # Free GPU memory after encoding
+    del model
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logging.info("GPU memory cleared")
 
     if dense.ndim != 2 or dense.shape[0] != len(chunk_uuids):
         conn.close()

@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from file_conversion_router.classes.page import Page
+from file_conversion_router.classes.new_page import Page
 from file_conversion_router.conversion.base_converter import BaseConverter
 
 

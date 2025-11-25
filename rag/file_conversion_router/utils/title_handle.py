@@ -61,7 +61,7 @@ class SpeakerRole(Enum):
 class ProcessingConfig:
     """Configuration for content processing."""
     model: str = "gpt-4.1"
-    temperature: float = 0.1
+    temperature: float = 0.4
     max_key_concepts: int = 5
     max_recap_questions: int = 5
     max_time_gap_seconds: float = 5.0
@@ -210,18 +210,18 @@ class SchemaFactory:
         """Create schema for key concept aspects - multiple analytical perspectives."""
         return {
             "type": "array",
-            "description": "Multiple detailed analytical descriptions of the key concept from different perspectives",
+            "description": "Multiple comprehensive analytical descriptions of the key concept from different perspectives. Each aspect should be thorough academic-style notes that fully cover the material.",
             "items": {
                 "type": "object",
                 "properties": {
                     "aspect": {
                         "type": "string",
                         "minLength": 1,
-                        "description": "The type of analysis (e.g., definition, example, use case, implication)"
+                        "description": "The type of analysis (e.g., definition, example, use case, implication, context)"
                     },
                     "content": {
                         "type": "string",
-                        "description": "Detailed description analyzing the key concept from this perspective"
+                        "description": "Comprehensive academic study notes analyzing the key concept from this perspective. Length should adapt to content complexity - simple concepts may need 2-3 sentences, complex concepts may need 5-7 sentences or more. Include all relevant information: definitions, multiple examples, context, practical implications, and connections to other concepts. Write as thorough study notes, not brief summaries."
                     }
                 },
                 "required": ["aspect", "content"],
@@ -1128,7 +1128,13 @@ class PromptBuilder:
             2. **Limited Quantity:** Aggressively merge and consolidate topics. The final count must always be less than {self.config.max_key_concepts}.
             3. **No Hierarchical Overlap:** Cannot choose both a main section and its sub-section.
             4. **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
-            5. **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            5. **Comprehensive Academic Study Notes in Aspects:**
+               - For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications, context, connections).
+               - Each aspect's content must be comprehensive academic-style notes that fully cover all relevant material from the source.
+               - Length should adapt to content complexity: simple concepts need 2-3 sentences minimum, complex concepts need 5-7 sentences or more.
+               - Include ALL relevant information: clear definitions, multiple concrete examples with context, practical implications, edge cases, and connections to related concepts.
+               - Write as thorough study notes that a student could learn from, not brief summaries.
+               - Prioritize completeness and educational value over brevity.
             6. **Preserve Original Order:** Maintain the sequence as in the original markdown.
             7. **Generate Follow-up Check-in Question:** Create challenging questions requiring application/analysis/synthesis.
 
@@ -1187,7 +1193,13 @@ class PromptBuilder:
 
             CRITICAL CONSTRAINTS:
             - **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
-            - **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            - **Comprehensive Academic Study Notes in Aspects:**
+              - For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications, context, connections).
+              - Each aspect's content must be comprehensive academic-style notes that fully cover all relevant material from the source.
+              - Length should adapt to content complexity: simple concepts need 2-3 sentences minimum, complex concepts need 5-7 sentences or more.
+              - Include ALL relevant information: clear definitions, multiple concrete examples with context, practical implications, edge cases, and connections to related concepts.
+              - Write as thorough study notes that a student could learn from, not brief summaries.
+              - Prioritize completeness and educational value over brevity.
             - Follow the same constraints as the standard key concept extraction.
 
             ### Part 3: Generate Recap Questions
@@ -1223,7 +1235,13 @@ class PromptBuilder:
 
             CRITICAL CONSTRAINTS:
             - **Concise Concepts:** Short keyword phrases or level-1 section titles (e.g., 'conda activate yk_env', 'recursion tree'). NOT full sentences.
-            - **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            - **Comprehensive Academic Study Notes in Aspects:**
+              - For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications, context, connections).
+              - Each aspect's content must be comprehensive academic-style notes that fully cover all relevant material from the source.
+              - Length should adapt to content complexity: simple concepts need 2-3 sentences minimum, complex concepts need 5-7 sentences or more.
+              - Include ALL relevant information: clear definitions, multiple concrete examples with context, practical implications, edge cases, and connections to related concepts.
+              - Write as thorough study notes that a student could learn from, not brief summaries.
+              - Prioritize completeness and educational value over brevity.
             - Maximum {self.config.max_key_concepts} concepts, following standard constraints.
 
             ### Part 3: Generate Recap Questions
@@ -1264,7 +1282,13 @@ class PromptBuilder:
 
             CRITICAL CONSTRAINTS:
             - **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
-            - **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            - **Comprehensive Academic Study Notes in Aspects:**
+              - For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications, context, connections).
+              - Each aspect's content must be comprehensive academic-style notes that fully cover all relevant material from the source.
+              - Length should adapt to content complexity: simple concepts need 2-3 sentences minimum, complex concepts need 5-7 sentences or more.
+              - Include ALL relevant information: clear definitions, multiple concrete examples with context, practical implications, edge cases, and connections to related concepts.
+              - Write as thorough study notes that a student could learn from, not brief summaries.
+              - Prioritize completeness and educational value over brevity.
             - Follow standard key concept extraction constraints.
 
             ### Part 3: Generate Recap Questions
@@ -1288,7 +1312,13 @@ class PromptBuilder:
             2. **Limited Quantity:** Maximum {self.config.max_key_concepts} concepts
             3. **No Hierarchical Overlap:** Cannot choose both main and sub-sections
             4. **Concise Concepts:** Short keyword phrases or level-1 section titles. NOT full sentences.
-            5. **Analyze with Aspects:** For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications). Each aspect should be a longer description analyzing the concept thoroughly.
+            5. **Comprehensive Academic Study Notes in Aspects:**
+               - For each key concept, provide multiple detailed analytical descriptions from different perspectives (e.g., definition, examples, use cases, implications, context, connections).
+               - Each aspect's content must be comprehensive academic-style notes that fully cover all relevant material from the source.
+               - Length should adapt to content complexity: simple concepts need 2-3 sentences minimum, complex concepts need 5-7 sentences or more.
+               - Include ALL relevant information: clear definitions, multiple concrete examples with context, practical implications, edge cases, and connections to related concepts.
+               - Write as thorough study notes that a student could learn from, not brief summaries.
+               - Prioritize completeness and educational value over brevity.
             6. **Preserve Original Order:** Maintain source document sequence
             7. **Generate Check-in Questions:** Create challenging assessment questions
 

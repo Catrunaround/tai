@@ -205,17 +205,42 @@ def embed_files_from_markdown(
             try:
                 # Create embedding text with metadata context
                 embedding_text = f"File: {file_name}\nCourse: {course_name} ({course_code})\n\nContent:\n{markdown_content}"
-                
-                # Generate embedding
-                embedding = model.encode([embedding_text])[0]
+
+                # Generate embedding with OOM retry logic
+                embedding = None
+                for attempt in range(2):
+                    try:
+                        embedding = model.encode([embedding_text])[0]
+                        break
+                    except RuntimeError as oom_error:
+                        if "CUDA out of memory" in str(oom_error) and attempt == 0:
+                            print(f"OOM error for {file_name}, clearing GPU memory and retrying...")
+                            import torch
+                            import gc
+                            del model
+                            gc.collect()
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                            # Reload model
+                            model = SentenceTransformer(
+                                embedding_model,
+                                model_kwargs=model_kwargs,
+                                tokenizer_kwargs={"padding_side": "left"},
+                            )
+                        else:
+                            raise
+
+                if embedding is None:
+                    raise RuntimeError(f"Failed to generate embedding for {file_name}")
+
                 embedding_blob = _to_blob(embedding)
-                
+
                 # Update file table with embedding
                 conn.execute(
                     "UPDATE file SET vector = ? WHERE uuid = ?",
                     (embedding_blob, uuid)
                 )
-                
+
                 processed_files += 1
                 results.append({
                     "uuid": uuid,
@@ -224,7 +249,7 @@ def embed_files_from_markdown(
                     "content_length": len(markdown_content),
                     "status": "success"
                 })
-                
+
             except Exception as e:
                 print(f"Error processing file {file_name}: {e}")
                 error_files += 1
@@ -237,7 +262,16 @@ def embed_files_from_markdown(
         
         # Commit all changes
         conn.commit()
-        
+
+        # Free GPU memory after processing
+        del model
+        import torch
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            print("GPU memory cleared")
+
         return {
             "status": "completed",
             "total_files": len(files),
