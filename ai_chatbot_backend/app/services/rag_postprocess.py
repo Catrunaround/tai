@@ -30,6 +30,42 @@ def extract_channels(text: str) -> dict:
         "final": ""
     }
 
+
+def extract_answers(json_text: str) -> str:
+    """
+    Extract only 'answer' fields from JSON array, hiding 'reference' objects.
+    Handles incomplete/streaming JSON gracefully.
+
+    Input:  [{"reference": {...}, "answer": "text1"}, {"reference": null, "answer": "text2"}]
+    Output: "text1\n\ntext2"
+    """
+    # Try to parse complete JSON first
+    try:
+        data = json.loads(json_text)
+        if isinstance(data, list):
+            answers = [item.get('answer', '') for item in data if item.get('answer')]
+            return '\n\n'.join(answers)
+    except json.JSONDecodeError:
+        pass
+
+    # For incomplete JSON, use regex to extract answer fields
+    # Pattern matches: "answer": "content..."
+    pattern = r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)"?'
+    matches = re.findall(pattern, json_text)
+
+    # Unescape JSON strings
+    answers = []
+    for match in matches:
+        try:
+            # Add quotes back and parse as JSON string to unescape
+            unescaped = json.loads(f'"{match}"')
+            answers.append(unescaped)
+        except:
+            answers.append(match)
+
+    return '\n\n'.join(answers)
+
+
 # Environment variables
 MEMORY_SYNOPSIS_JSON_SCHEMA = {
     "type": "object",

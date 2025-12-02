@@ -7,7 +7,7 @@ import io
 import soundfile as sf
 import numpy as np
 from openai import OpenAI
-from app.services.rag_postprocess import extract_channels
+from app.services.rag_postprocess import extract_channels, extract_answers
 
 def extract_channels_oss(text: str) -> dict:
     # 1) Remove the special marker wherever it appears
@@ -36,6 +36,7 @@ async def chat_stream_parser(
     if audio_text:
         yield sse(AudioTranscript(text=audio_text))
     previous_channels = {}
+    previous_answer_text = ""  # Track previous answer text for json_output streaming
     previous_index = -2
     text_seq = 0
     voice_seq=0
@@ -75,6 +76,13 @@ async def chat_stream_parser(
                 #     print("[DEBUG] Skipping partial reference chunk:" + repr(channels[channel][-50:]))
                 continue_flag = True
                 break
+            # For json_output, extract only answer text from 'final' channel, hiding references
+            if json_output and channel == 'final':
+                current_answer_text = extract_answers(channels['final'])
+                chunk = current_answer_text[len(previous_answer_text):]
+                previous_answer_text = current_answer_text
+                if not chunk.strip():
+                    continue
             yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk)); text_seq += 1
             print(chunk, end="")
         if continue_flag:
@@ -173,7 +181,7 @@ async def chat_stream_parser(
     mentioned_references = set()
 
     if json_output:
-        # Parse JSON to extract mentioned_contexts
+        # Parse JSON to extract references from array structure
         try:
             import json
             final_text = channels['final'].strip()
@@ -183,7 +191,14 @@ async def chat_stream_parser(
                 final_text = re.sub(r'\n?```\s*$', '', final_text)
 
             json_data = json.loads(final_text)
-            if 'mentioned_contexts' in json_data and isinstance(json_data['mentioned_contexts'], list):
+            # New array structure: [{"reference": {"number": 1, ...}, "answer": "..."}, ...]
+            if isinstance(json_data, list):
+                for segment in json_data:
+                    ref = segment.get('reference')
+                    if ref is not None and isinstance(ref, dict) and 'number' in ref:
+                        mentioned_references.add(int(ref['number']))
+            # Fallback for old structure
+            elif 'mentioned_contexts' in json_data and isinstance(json_data['mentioned_contexts'], list):
                 for context in json_data['mentioned_contexts']:
                     if 'reference' in context:
                         mentioned_references.add(int(context['reference']))
