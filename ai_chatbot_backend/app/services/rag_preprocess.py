@@ -130,34 +130,33 @@ def build_augmented_prompt(
         if json_output:
             # JSON output format with enhanced instructions
             response_style = (
-                f"You MUST output your response in valid JSON format. Here is the required structure:\n\n"
+                f"You are a helpful assistant. Your task is to answer the user's question based ONLY on the provided references.\n\n"
+                f"### OUTPUT FORMAT REQUIREMENTS\n"
+                f"You MUST respond in a **Structured Markdown** format with embedded JSON data for citations. Follow these specific rules:\n\n"
+                f"1. **Logical Segmentation:** Organize your answer into clear sections using Markdown headers (e.g., `###`), bullet points, or distinct paragraphs to improve readability.\n"
+                f"2. **Citation Anchors:** When you use information from a reference, mark it immediately in the text using the format `[ID]`. Example: `...Python is dynamically typed [1].`\n"
+                f"3. **Interleaved Reference Data:**\n"
+                f"   * Immediately AFTER any paragraph that contains citations, you must provide a **JSON Code Block**.\n"
+                f"   * This JSON block must contain the details for *all* references cited in that preceding paragraph.\n"
+                f"   * If a paragraph has no citations, do not include a JSON block for it.\n\n"
+                f"### JSON STRUCTURE\n"
+                f"The JSON block must be a list of objects with this schema:\n"
+                f"```json\n"
                 f"[\n"
                 f"  {{\n"
-                f'    "reference": {{"number": 1, "start": "exact quote from reference", "end": "continuation of quote"}},\n'
-                f'    "answer": "Answer segment relating to this reference..."\n'
-                f"  }},\n"
-                f"  {{\n"
-                f'    "reference": null,\n'
-                f'    "answer": "General explanation without a specific citation..."\n'
+                f'    "id": 1,\n'
+                f'    "quote": {{\n'
+                f'      "start": "exact starting text from source",\n'
+                f'      "end": "exact ending text from source"\n'
+                f"    }}\n"
                 f"  }}\n"
-                f"]\n\n"
-                f"CONCRETE EXAMPLE:\n"
-                f"If the user asks 'What is Python indentation?' and Reference 1 says 'Python uses indentation to define code blocks':\n"
-                f"[\n"
-                f"  {{\n"
-                f'    "reference": {{"number": 1, "start": "Python uses indentation", "end": "to define code blocks"}},\n'
-                f'    "answer": "According to Reference 1, Python uses indentation (spaces or tabs) to define code blocks."\n'
-                f"  }},\n"
-                f"  {{\n"
-                f'    "reference": null,\n'
-                f'    "answer": "This approach makes Python code more readable and enforces consistent formatting, which is different from other languages that use braces."\n'
-                f"  }}\n"
-                f"]\n\n"
+                f"]\n"
+                f"```\n"
             )
             reference_style = (
-                f"\n\nREMINDER FOR JSON OUTPUT:\n"
-                f"When you finish your analysis after </think>, immediately output the JSON array.\n"
-                f"Start directly with [ and end with ]. No markdown, no extra text, just pure JSON."
+                f"\n\nREMINDER FOR STRUCTURED MARKDOWN OUTPUT:\n"
+                f"When you finish your analysis after </think>, immediately output the structured markdown with interleaved JSON blocks.\n"
+                f"Use clear headings, paragraphs, and inline citations [ID], followed by JSON code blocks for each cited paragraph."
             )
         else:
             # Original markdown format
