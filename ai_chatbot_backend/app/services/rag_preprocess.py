@@ -3,10 +3,13 @@ import time
 from typing import Any, Optional, Tuple, List, Dict
 from uuid import UUID
 # Local libraries
-from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, get_file_related_documents
+from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, \
+    get_file_related_documents
 from app.services.rag_postprocess import extract_channels
 
-async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine: Any, tokenizer: Any, sampling: Any, file_sections: Any = None, excerpt: Any = None) -> str:
+
+async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine: Any, tokenizer: Any, sampling: Any,
+                                file_sections: Any = None, excerpt: Any = None) -> str:
     """
     Reformulate the latest user request into a single self-contained query string,
     based on the full chat history (user + assistant messages).
@@ -33,7 +36,7 @@ async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine:
 
     if memory_synopsis:
         request_parts.append(f"Memory Synopsis:\n{memory_synopsis}\n")
-    
+
     if file_sections or excerpt:
         request_parts.append(f"File Context:\n")
 
@@ -124,39 +127,40 @@ def build_augmented_prompt(
                 f"Topic Path of chunk in file to tell the topic of chunk: {topic_path}\n"
                 f'Document: {top_docs[i]}\n\n'
             )
-            reference_list.append([topic_path, url, file_path, file_uuid,chunk_index])
+            reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
     # Create response and reference styles based on audio mode and json_output flag.
     if not audio_response:
         if json_output:
             # JSON output format with enhanced instructions
             response_style = (
-                f"You are a helpful assistant. Your task is to answer the user's question based ONLY on the provided references.\n\n"
-                f"### OUTPUT FORMAT REQUIREMENTS\n"
-                f"You MUST respond in a **Structured Markdown** format with embedded JSON data for citations. Follow these specific rules:\n\n"
-                f"1. **Logical Segmentation:** Organize your answer into clear sections using Markdown headers (e.g., `###`), bullet points, or distinct paragraphs to improve readability.\n"
-                f"2. **Citation Anchors:** When you use information from a reference, mark it immediately in the text using the format `[ID]`. Example: `...Python is dynamically typed [1].`\n"
-                f"3. **Interleaved Reference Data:**\n"
-                f"   * Immediately AFTER any paragraph that contains citations, you must provide a **JSON Code Block**.\n"
-                f"   * This JSON block must contain the details for *all* references cited in that preceding paragraph.\n"
-                f"   * If a paragraph has no citations, do not include a JSON block for it.\n\n"
-                f"### JSON STRUCTURE\n"
-                f"The JSON block must be a list of objects with this schema:\n"
-                f"```json\n"
+                f"You MUST output your response in valid JSON format. Here is the required structure:\n\n"
                 f"[\n"
                 f"  {{\n"
-                f'    "id": 1,\n'
-                f'    "quote": {{\n'
-                f'      "start": "exact starting text from source",\n'
-                f'      "end": "exact ending text from source"\n'
-                f"    }}\n"
+                f'    "reference": {{"number": 1, "start": "exact quote from reference", "end": "continuation of quote"}},\n'
+                f'    "answer": "Answer segment relating to this reference..."\n'
+                f"  }},\n"
+                f"  {{\n"
+                f'    "reference": null,\n'
+                f'    "answer": "General explanation without a specific citation..."\n'
                 f"  }}\n"
-                f"]\n"
-                f"```\n"
+                f"]\n\n"
+                f"CONCRETE EXAMPLE:\n"
+                f"If the user asks 'What is Python indentation?' and Reference 1 says 'Python uses indentation to define code blocks':\n"
+                f"[\n"
+                f"  {{\n"
+                f'    "reference": {{"number": 1, "start": "Python uses indentation", "end": "to define code blocks"}},\n'
+                f'    "answer": "According to Reference 1, Python uses indentation (spaces or tabs) to define code blocks."\n'
+                f"  }},\n"
+                f"  {{\n"
+                f'    "reference": null,\n'
+                f'    "answer": "This approach makes Python code more readable and enforces consistent formatting, which is different from other languages that use braces."\n'
+                f"  }}\n"
+                f"]\n\n"
             )
             reference_style = (
-                f"\n\nREMINDER FOR STRUCTURED MARKDOWN OUTPUT:\n"
-                f"When you finish your analysis after </think>, immediately output the structured markdown with interleaved JSON blocks.\n"
-                f"Use clear headings, paragraphs, and inline citations [ID], followed by JSON code blocks for each cited paragraph."
+                f"\n\nREMINDER FOR JSON OUTPUT:\n"
+                f"When you finish your analysis after </think>, immediately output the JSON array.\n"
+                f"Start directly with [ and end with ]. No markdown, no extra text, just pure JSON."
             )
         else:
             # Original markdown format
@@ -201,7 +205,7 @@ def build_augmented_prompt(
         )
     else:
         print("[INFO] Relevant documents found and inserted into the prompt.")
-        system_add_message =(
+        system_add_message = (
             f"\n{response_style}"
             f"Review the reference documents, considering their Directory Path (original file location), "
             f"Topic Path (section or title it belongs to), and Document content. "
@@ -239,9 +243,9 @@ def build_augmented_prompt(
 
 
 def build_file_augmented_context(
-    file_uuid: UUID,
-    selected_text: Optional[str] = None,
-    index: Optional[float] = None,
+        file_uuid: UUID,
+        selected_text: Optional[str] = None,
+        index: Optional[float] = None,
 ) -> Tuple[str, str, str, List[Dict]]:
     """
     Build an augmented context for file-based chat by retrieving reference documents.
@@ -272,7 +276,7 @@ def build_file_augmented_context(
             # Already sorted by chunk_index, so closest_chunks are in order
         focused_chunk = ' '.join(chunk['chunk'] for chunk in closest_chunks)
         augmented_context += f"The user is focused on the following part of the file: {focused_chunk}\n\n"
-    
+
     if selected_text:
         augmented_context += f"The user has selected the following text in the file:\n\n{selected_text}\n\n"
 

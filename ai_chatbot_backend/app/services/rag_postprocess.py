@@ -316,4 +316,3 @@ async def _llm_merge_synopses(
         print('Failed to parse merged MemorySynopsis JSON:', text)
         return MemorySynopsis()
     return MemorySynopsis(**data)
-

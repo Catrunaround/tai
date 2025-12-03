@@ -13,9 +13,10 @@ from app.services.rag_preprocess import build_retrieval_query, build_augmented_p
 # Environment Variables
 # TOKENIZER_MODEL_ID = "THUDM/GLM-4-9B-0414"
 from app.dependencies.model import LLM_MODEL_ID
+
 # TOKENIZER_MODEL_ID = "kaitchup/GLM-Z1-32B-0414-autoround-gptq-4bit"
 # RAG-Pipeline Shared Resources
-SAMPLING = SamplingParams(temperature=0.6, top_p=0.95,top_k=20,min_p=0, max_tokens=6000)
+SAMPLING = SamplingParams(temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000)
 TOKENIZER = AutoTokenizer.from_pretrained(LLM_MODEL_ID)
 
 """
@@ -24,6 +25,8 @@ class UserFocus(BaseModel):
     selected_text: str = None
     chunk_index: float = None
 """
+
+
 async def generate_chat_response(
         messages: List[Message],
         user_focus: Optional[UserFocus] = None,
@@ -93,9 +96,9 @@ async def generate_chat_response(
         course if course else "",
         threshold,
         True,
-        top_k = top_k,
-        problem_content = problem_content,
-        answer_content = answer_content,
+        top_k=top_k,
+        problem_content=problem_content,
+        answer_content=answer_content,
         query_message=query_message,
         audio_response=audio_response,
         json_output=json_output
@@ -110,7 +113,7 @@ async def generate_chat_response(
     else:
         response = engine(messages[-1].content, stream=stream, course=course)
         return response, reference_list
-      
+
 
 def _is_local_engine(engine: Any) -> bool:
     """
@@ -129,6 +132,7 @@ def _generate_streaming_response(messages: List[Message], engine: Any = None) ->
     ]
     prompt = TOKENIZER.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
     return engine.generate(prompt, SAMPLING, request_id=str(time.time_ns()))
+
 
 def format_chat_msg(messages: List[Message], json_output: bool = True) -> List[Message]:
     """

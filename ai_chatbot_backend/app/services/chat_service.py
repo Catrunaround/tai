@@ -9,6 +9,7 @@ import numpy as np
 from openai import OpenAI
 from app.services.rag_postprocess import extract_channels, extract_answers
 
+
 def extract_channels_oss(text: str) -> dict:
     # 1) Remove the special marker wherever it appears
     cleaned = re.sub(r"<\|start\|\>assistant\s*", "", text)
@@ -27,8 +28,11 @@ def extract_channels_oss(text: str) -> dict:
         result[ch] = msg  # if duplicate channels appear, the last one wins
     return result
 
+
 async def chat_stream_parser(
-        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message]= None,audio_text: str=None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False, json_output: bool = True
+        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message] = None,
+        audio_text: str = None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False,
+        json_output: bool = True
 ) -> AsyncIterator[str]:
     """
     Parse the streaming response from the chat model and yield deltas.
@@ -39,7 +43,7 @@ async def chat_stream_parser(
     previous_answer_text = ""  # Track previous answer text for json_output streaming
     previous_index = -2
     text_seq = 0
-    voice_seq=0
+    voice_seq = 0
     audio_messages = []
     PARTIAL_TAIL_GUARD = re.compile(r"""
     (?ix)
@@ -59,11 +63,12 @@ async def chat_stream_parser(
     """, re.VERBOSE)
     async for output in stream:
         text = output.outputs[0].text
-        channels= extract_channels(text)
+        channels = extract_channels(text)
         # print(channels)
         if not channels:
             continue
-        chunks= {c: channels[c][len(previous_channels.get(c,"")):] for c in channels if channels[c] != previous_channels.get(c,"")}
+        chunks = {c: channels[c][len(previous_channels.get(c, "")):] for c in channels if
+                  channels[c] != previous_channels.get(c, "")}
         if not chunks:
             continue
         continue_flag = False
@@ -83,21 +88,22 @@ async def chat_stream_parser(
                 previous_answer_text = current_answer_text
                 if not chunk.strip():
                     continue
-            yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk)); text_seq += 1
+            yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk));
+            text_seq += 1
             print(chunk, end="")
         if continue_flag:
             continue
         previous_channels = channels
         if audio and 'final' in channels:
             last_newline_index = channels['final'].rfind('. ')
-            if last_newline_index >previous_index+2:
-                audio_text = channels['final'][previous_index + 2:last_newline_index+2]
+            if last_newline_index > previous_index + 2:
+                audio_text = channels['final'][previous_index + 2:last_newline_index + 2]
                 previous_index = last_newline_index
-                #replace all the consecutive \n with space no matter how many \n
+                # replace all the consecutive \n with space no matter how many \n
                 # audio_text = re.sub(r'\n+', ' ', audio_text)
-                if audio_text.strip()== "":
+                if audio_text.strip() == "":
                     continue
-                messages_to_send= audio_text.split('. ')
+                messages_to_send = audio_text.split('. ')
                 for msg in messages_to_send:
                     if msg.strip():
                         audio_messages.append({"role": "user", "content": msg + '. '})
@@ -107,7 +113,8 @@ async def chat_stream_parser(
                         audio_iterator = audio_generator(audio_messages, stream=True, speaker_name=speaker_name)
                         audio_bytes_io = io.BytesIO()
                         async for data in audio_iterator:
-                            yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec())); voice_seq += 1
+                            yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec()));
+                            voice_seq += 1
                             audio_bytes = base64.b64decode(data)
                             audio_bytes_io.write(audio_bytes)
                         audio_data = np.frombuffer(audio_bytes_io.getvalue(), dtype=np.int16)
@@ -145,11 +152,12 @@ async def chat_stream_parser(
                         audio_messages.append({"role": "user", "content": msg + '. '})
                         print("\n[INFO] Audio text:")
                         print(msg + '. ')
-                        speaker_name= get_speaker_name(course_code)
+                        speaker_name = get_speaker_name(course_code)
                         audio_iterator = audio_generator(audio_messages, stream=True, speaker_name=speaker_name)
                         audio_bytes_io = io.BytesIO()
                         async for data in audio_iterator:
-                            yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec(),speaker_name=speaker_name));
+                            yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec(),
+                                                    speaker_name=speaker_name));
                             voice_seq += 1
                             audio_bytes = base64.b64decode(data)
                             audio_bytes_io.write(audio_bytes)
@@ -175,7 +183,6 @@ async def chat_stream_parser(
     # TOKENIZER = AutoTokenizer.from_pretrained(TOKENIZER_MODEL_ID)
     # full_response_text = TOKENIZER.decode(token, skip_special_tokens=False)
     # print(full_response_text)
-
 
     # Extract mentioned references based on output format
     mentioned_references = set()
@@ -234,7 +241,7 @@ async def chat_stream_parser(
     max_idx = len(reference_list)
     for i in sorted(mentioned_references):
         if 1 <= i <= max_idx:
-            info_path, url, file_path, file_uuid,chunk_index = reference_list[i - 1]
+            info_path, url, file_path, file_uuid, chunk_index = reference_list[i - 1]
             references.append(Reference(
                 reference_idx=i,
                 info_path=info_path,
@@ -249,12 +256,14 @@ async def chat_stream_parser(
     yield sse(Done())
     yield "data: [DONE]\n\n"  # Final done message for SSE clients
 
+
 def encode_base64_content_from_file(file_path: str) -> str:
     """Encode a content from a local file to base64 format."""
     # Read the MP3 file as binary and encode it directly to Base64
     with open(file_path, "rb") as audio_file:
         audio_base64 = base64.b64encode(audio_file.read()).decode("utf-8")
     return audio_base64
+
 
 def convert_audio_to_base64(audio: np.ndarray,
                             sampling_rate: int,
@@ -263,14 +272,16 @@ def convert_audio_to_base64(audio: np.ndarray,
     sf.write(audio_buffer, audio, sampling_rate, format=target_format)
     return base64.b64encode(audio_buffer.getvalue()).decode('utf-8')
 
+
 def format_audio_text_message(audio_text: str) -> List[Dict]:
     """
     Format the audio text message into the expected structure for the chat model.
     """
     # remove all the [] in text
-    audio_text = re.sub(r'\[.*?\]', '', audio_text).replace('\n',' ').strip()
+    audio_text = re.sub(r'\[.*?\]', '', audio_text).replace('\n', ' ').strip()
     print(f"[INFO] Audio text after cleaning: {audio_text}")
     return [{"role": "user", "content": audio_text}]
+
 
 def get_speaker_name(course_code: str) -> str:
     if course_code == "CS 61A":
@@ -280,13 +291,14 @@ def get_speaker_name(course_code: str) -> str:
     else:
         return "Professor Allen Yang"  # Default speaker name
 
+
 async def audio_generator(messages: List[Dict], stream: bool = True, speaker_name: str = None
-) -> AsyncIterator[str]:
+                          ) -> AsyncIterator[str]:
     """
     Parse the streaming response from the audio model and yield deltas.
     """
     data_dir = '/home/tai25/bot/tai/ai_chatbot_backend/voice_prompts'
-    
+
     # Select voice prompt based on course_code
     if speaker_name == "Professor John DeNero":
         audio_file = "trees_54.wav"
@@ -297,7 +309,7 @@ async def audio_generator(messages: List[Dict], stream: bool = True, speaker_nam
     else:
         audio_file = "Allen_yang_voice.wav"
         text_file = "Allen_yang_voice.txt"
-    
+
     audio_path = os.path.join(data_dir, audio_file)
     audio_text_path = os.path.join(data_dir, text_file)
     with open(audio_text_path, "r") as f:
@@ -322,7 +334,7 @@ async def audio_generator(messages: List[Dict], stream: bool = True, speaker_nam
     audio_bytes_io = io.BytesIO()
     if len(messages) > 3:
         messages = messages[:2] + messages[-1:]
-    client = OpenAI(base_url='http://128.32.43.216:8000/v1',api_key='EMPTY')
+    client = OpenAI(base_url='http://128.32.43.216:8000/v1', api_key='EMPTY')
     models = client.models.list()
     model = models.data[0].id
     chat_completion = client.chat.completions.create(
@@ -340,6 +352,7 @@ async def audio_generator(messages: List[Dict], stream: bool = True, speaker_nam
         if chunk.choices and hasattr(chunk.choices[0].delta, "audio") and chunk.choices[0].delta.audio:
             yield chunk.choices[0].delta.audio["data"]
 
+
 async def tts_parsor(
         stream: AsyncIterator
 ) -> AsyncIterator[str]:
@@ -348,7 +361,8 @@ async def tts_parsor(
     """
     seq = 0
     async for data in stream:
-        yield sse(ResponseDelta(seq=seq, audio_b64=data, audio_spec=AudioSpec())); seq += 1
+        yield sse(ResponseDelta(seq=seq, audio_b64=data, audio_spec=AudioSpec()));
+        seq += 1
 
     yield sse(Done())
     yield "data: [DONE]\n\n"  # Final done message for SSE clients
