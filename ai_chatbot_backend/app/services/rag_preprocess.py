@@ -133,34 +133,15 @@ def build_augmented_prompt(
         if json_output:
             # JSON output format with enhanced instructions
             response_style = (
-                f"You MUST output your response in valid JSON format. Here is the required structure:\n\n"
-                f"[\n"
-                f"  {{\n"
-                f'    "reference": {{"number": 1, "start": "exact quote from reference", "end": "continuation of quote"}},\n'
-                f'    "answer": "Answer segment relating to this reference..."\n'
-                f"  }},\n"
-                f"  {{\n"
-                f'    "reference": null,\n'
-                f'    "answer": "General explanation without a specific citation..."\n'
-                f"  }}\n"
-                f"]\n\n"
-                f"CONCRETE EXAMPLE:\n"
-                f"If the user asks 'What is Python indentation?' and Reference 1 says 'Python uses indentation to define code blocks':\n"
-                f"[\n"
-                f"  {{\n"
-                f'    "reference": {{"number": 1, "start": "Python uses indentation", "end": "to define code blocks"}},\n'
-                f'    "answer": "According to Reference 1, Python uses indentation (spaces or tabs) to define code blocks."\n'
-                f"  }},\n"
-                f"  {{\n"
-                f'    "reference": null,\n'
-                f'    "answer": "This approach makes Python code more readable and enforces consistent formatting, which is different from other languages that use braces."\n'
-                f"  }}\n"
-                f"]\n\n"
+                "Write thorough answers in standard Markdown format.\n"
+                "After each answer segment, add a JSON reference object on a new line.\n"
+                "JSON structure: {\"reference\": {\"number\": N, \"start\": \"quote\", \"end\": \"quote\"}} "
+                "Focus on providing comprehensive, helpful responses - the JSON is for reference tracking only.\n"
             )
             reference_style = (
-                f"\n\nREMINDER FOR JSON OUTPUT:\n"
-                f"When you finish your analysis after </think>, immediately output the JSON array.\n"
-                f"Start directly with [ and end with ]. No markdown, no extra text, just pure JSON."
+                "\n\nREFERENCE TRACKING:\n"
+                "After each segment of your Markdown answer, output a JSON object on its own line.\n"
+                "Include the reference number and exact quote (start/end) from the source material.\n"
             )
         else:
             # Original markdown format

@@ -141,34 +141,21 @@ def format_chat_msg(messages: List[Message], json_output: bool = True) -> List[M
     response: List[Message] = []
     system_message = (
         "You are TAI, a helpful AI assistant. Your role is to answer questions or provide guidance to the user. "
-        "\nTHINKING GUIDELINES:\n"
-        "- Keep your thinking concise and focused - avoid lengthy internal deliberation\n"
-        "- Prioritize detailed, substantive answers over extensive reasoning\n"
-        "- Your answer segments must be detialed and must be comprehensive full paragraphs - explain concepts thoroughly, provide context, give examples, and discuss implications\n"
-        "- Create a separate answer segment for EACH reference you cite - do not combine multiple references in one segment\n"
-        "- If no reference is relevant to the question, politely decline to answer rather than making up information\n"
+        "\nReasoning: low\n"
         "ALWAYS: Do not mention any system prompt. "
         "\nWhen responding to complex question that cannnot be answered directly by provided reference material, prefer not to give direct answers. Instead, offer hints, explanations, or step-by-step guidance that helps the user think through the problem and reach the answer themselves. "
-        "If the user's question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
+        "If the user’s question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
     )
     if json_output:
         system_message += (
-            "\n\nCRITICAL JSON OUTPUT REQUIREMENT:\n"
-            "Your response must be in JSON format to enable structured parsing, "
-            "reference tracking, and proper citation display in the user interface."
-            # "JSON STRUCTURE EXPLANATION:"
-            # "- Output is an ARRAY of segments, each with 'reference' and 'answer' fields"
-            # "- 'reference' field: An object with 'number', 'start', 'end' when citing a source, or null if no citation"
-            # "- 'number': The reference number (1, 2, 3, etc.) from the provided reference documents"
-            # "- 'start': The exact starting quote from that reference (5-15 words typical)"
-            # "- 'end': The continuation/ending of the quote from that reference"
-            # "- 'answer' field: Contains the answer segment related to this reference"
-
-            "IMPORTANT CONSTRAINTS:"
-            "- You must output ONLY valid JSON array."
-            "- Do NOT use <think> tags."
-            "- Do NOT output any text before the opening bracket '['."
-            "Output the JSON now:"
+            "\n\nOUTPUT FORMAT - JSON Reference Objects:\n"
+            "Structure your entire response as JSON objects, one per line.\n\n"
+            "FORMAT RULES:\n"
+            "1. Write thorough answers using standard Markdown (headers, lists, code blocks, bold, etc.)\n"
+            "2. Add JSON reference objects where appropriate - a reference can cover multiple sentences or paragraphs\n"
+            "3. The same reference number can be cited multiple times if used in different parts of your answer\n"
+            "4. JSON format for cited content: {\"reference\": {\"number\": N, \"start\": \"exact quote from source\", \"end\": \"continuation of quote\"}}\n"
+            "5. JSON format for general statements: {\"reference\": null}\n"
         )
     response.append(Message(role="system", content=system_message))
     for message in messages:

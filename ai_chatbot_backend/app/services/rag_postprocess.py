@@ -31,39 +31,33 @@ def extract_channels(text: str) -> dict:
     }
 
 
-def extract_answers(json_text: str) -> str:
+def extract_answers(text: str) -> str:
     """
-    Extract only 'answer' fields from JSON array, hiding 'reference' objects.
-    Handles incomplete/streaming JSON gracefully.
+    Extract pure Markdown content, removing inline JSON reference objects.
+    Handles the Markdown + inline JSON format where each answer segment
+    is followed by a JSON reference object on its own line.
 
-    Input:  [{"reference": {...}, "answer": "text1"}, {"reference": null, "answer": "text2"}]
-    Output: "text1\n\ntext2"
+    Input:
+        Markdown content here...
+        {"reference": {"number": 1, "start": "...", "end": "..."}}
+        More markdown content...
+        {"reference": null}
+
+    Output: Pure Markdown content with JSON lines removed.
     """
-    # Try to parse complete JSON first
-    try:
-        data = json.loads(json_text)
-        if isinstance(data, list):
-            answers = [item.get('answer', '') for item in data if item.get('answer')]
-            return '\n\n'.join(answers)
-    except json.JSONDecodeError:
-        pass
+    lines = text.split('\n')
+    markdown_lines = []
 
-    # For incomplete JSON, use regex to extract answer fields
-    # Pattern matches: "answer": "content..."
-    pattern = r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)"?'
-    matches = re.findall(pattern, json_text)
+    for line in lines:
+        stripped = line.strip()
+        # Skip lines that are JSON reference objects
+        markdown_lines.append(line)
 
-    # Unescape JSON strings
-    answers = []
-    for match in matches:
-        try:
-            # Add quotes back and parse as JSON string to unescape
-            unescaped = json.loads(f'"{match}"')
-            answers.append(unescaped)
-        except:
-            answers.append(match)
-
-    return '\n\n'.join(answers)
+    # Join lines and clean up excessive blank lines
+    result = '\n'.join(markdown_lines)
+    # Replace multiple consecutive blank lines with double newline
+    result = re.sub(r'\n{3,}', '\n\n', result)
+    return result.strip()
 
 
 # Environment variables
