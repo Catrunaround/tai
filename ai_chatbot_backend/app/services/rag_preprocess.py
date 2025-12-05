@@ -133,15 +133,17 @@ def build_augmented_prompt(
         if json_output:
             # JSON output format with enhanced instructions
             response_style = (
-                "Write thorough answers in standard Markdown format.\n"
-                "After each answer segment, add a JSON reference object on a new line.\n"
-                "JSON structure: {\"reference\": {\"number\": N, \"start\": \"quote\", \"end\": \"quote\"}} "
-                "Focus on providing comprehensive, helpful responses - the JSON is for reference tracking only.\n"
+                "\n### JSON CONSTRUCTION INSTRUCTIONS:\n"
+                "1. **Execution Order**: First, generate the `<think>` block to plan your Socratic guidance. Then, generate the JSON code block.\n"
+                "2. **Content Quality**: Inside the JSON `blocks`, the `markdown_content` must be thorough and educational. Use the Socratic method (hints over direct answers) for complex topics.\n"
+                "3. **Formatting**: Ensure the output is valid JSON. Escape quotes properly.\n"
             )
+            
             reference_style = (
-                "\n\nREFERENCE TRACKING:\n"
-                "After each segment of your Markdown answer, output a JSON object on its own line.\n"
-                "Include the reference number and exact quote (start/end) from the source material.\n"
+                "\n### REFERENCE MAPPING RULES (CRITICAL):\n"
+                "1. **No Inline Text**: Do NOT include text citations like `[1]` inside the `markdown_content`.\n"
+                "2. **Quote Extraction**: For every fact you state, identify the source Reference Number (N) and copy the **supporting text snippet** into the `quote_text` field of the `citations` object.\n"
+                "3. **Precision**: The `quote_text` should be concise evidence, not the entire document.\n"
             )
         else:
             # Original markdown format

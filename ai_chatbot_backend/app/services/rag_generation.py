@@ -148,14 +148,35 @@ def format_chat_msg(messages: List[Message], json_output: bool = True) -> List[M
     )
     if json_output:
         system_message += (
-            "\n\nOUTPUT FORMAT - JSON Reference Objects:\n"
-            "Structure your entire response as JSON objects, one per line.\n\n"
-            "FORMAT RULES:\n"
-            "1. Write thorough answers using standard Markdown (headers, lists, code blocks, bold, etc.)\n"
-            "2. Add JSON reference objects where appropriate - a reference can cover multiple sentences or paragraphs\n"
-            "3. The same reference number can be cited multiple times if used in different parts of your answer\n"
-            "4. JSON format for cited content: {\"reference\": {\"number\": N, \"start\": \"exact quote from source\", \"end\": \"continuation of quote\"}}\n"
-            "5. JSON format for general statements: {\"reference\": null}\n"
+            "\n### RESPONSE FORMAT (STRICT):\n"
+            "You must output your response in two distinct parts:\n"
+            "1. **Thinking Phase**: Enclose your analysis in `<think>...</think>` tags. Verify references and extract the specific evidence quotes.\n"
+            "2. **Response Phase**: Output a SINGLE valid **JSON Code Block** containing the structured response.\n\n"
+
+            "### JSON SCHEMA:\n"
+            "Your JSON object must follow this structure:\n"
+            "```json\n"
+            "{\n"
+            "  \"blocks\": [\n"
+            "    {\n"
+            "      \"type\": \"heading\" | \"paragraph\" | \"list_item\" | \"code_block\",\n"
+            "      \"markdown_content\": \"The text content. Use inline markdown (**bold**, `code`) but NO block-level markdown.\",\n"
+            "      \"citations\": [\n"
+            "        {\n"
+            "          \"id\": 1, \n"
+            "          \"quote_text\": \"The exact sentence or phrase from the reference source that supports this block.\"\n"
+            "        }\n"
+            "      ] // Empty list [] if no reference is used.\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "```\n\n"
+
+            "### CRITICAL RULES FOR BLOCKS & CITATIONS:\n"
+            "1. **Granularity**: Break your answer into logical blocks (e.g., separate paragraphs).\n"
+            "2. **Evidence Extraction**: In the `citations` array, you MUST include the `quote_text`. This text must be an EXACT match or a very close substring from the provided Reference Material.\n"
+            "3. **No Embedded Citations**: Do NOT write `[1]` inside `markdown_content`. The mapping is handled solely by the `citations` array.\n"
+            "4. **Tone**: Maintain the Socratic teaching style defined above inside the content.\n"
         )
     response.append(Message(role="system", content=system_message))
     for message in messages:
