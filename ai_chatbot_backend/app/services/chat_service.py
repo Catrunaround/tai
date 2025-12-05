@@ -333,9 +333,7 @@ async def audio_generator(messages: List[Dict], stream: bool = True, speaker_nam
         }
     ]
     messages = messages_add_to_begining + messages
-    #audio_bytes_io = io.BytesIO()
-    #if len(messages) > 3:
-    #    messages = messages[:2] + messages[-1:]
+
     client = OpenAI(base_url='http://128.32.43.216:8000/v1', api_key='EMPTY')
     models = client.models.list()
     model = models.data[0].id
