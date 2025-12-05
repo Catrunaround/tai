@@ -133,17 +133,30 @@ def build_augmented_prompt(
         if json_output:
             # JSON output format with enhanced instructions
             response_style = (
-                "\n### JSON CONSTRUCTION INSTRUCTIONS:\n"
-                "1. **Execution Order**: First, generate the `<think>` block to plan your Socratic guidance. Then, generate the JSON code block.\n"
-                "2. **Content Quality**: Inside the JSON `blocks`, the `markdown_content` must be thorough and educational. Use the Socratic method (hints over direct answers) for complex topics.\n"
-                "3. **Formatting**: Ensure the output is valid JSON. Escape quotes properly.\n"
+                "\n### JSON & PEDAGOGY STRATEGY:\n"
+                "You must blend the Socratic teaching style into the JSON structure strictly:\n\n"
+
+                "1. **Thinking Phase (<think>)**: \n"
+                "   - First, praise the user's curiosity and link to prior knowledge.\n"
+                "   - Analyze the goal: Understand vs. Apply vs. Create.\n"
+                "   - Plan the structure: usage of Headers, Paragraphs, and Questions.\n\n"
+
+                "2. **Mapping Pedagogy to JSON Blocks**:\n"
+                "   - **Headlines**: When your strategy calls for 'headlines' or structural breaks, you MUST output a block with `\"type\": \"heading\"`.\n"
+                "   - **Explanations**: Use `\"type\": \"paragraph\"` for core content. Use **bold** for key terms.\n"
+                "   - **Interaction**: End with a `\"type\": \"paragraph\"` block that invites the next action or asks a reflection question.\n\n"
+
+                "3. **Bloom's Taxonomy Logic (Apply This)**:\n"
+                "   - **If Understand**: Use `heading` blocks to separate concepts. Give explanation + clear example. Keep concise.\n"
+                "   - **If Apply–Analyze**: Clarify concepts first. Ask if they want hints. DO NOT give the final answer. Use `list_item` blocks for steps if needed.\n"
+                "   - **If Evaluate–Create**: Unpack the problem. Ask for their approach first.\n\n"
             )
-            
+
             reference_style = (
-                "\n### REFERENCE MAPPING RULES (CRITICAL):\n"
+                "\n### REFERENCE MAPPING RULES:\n"
                 "1. **No Inline Text**: Do NOT include text citations like `[1]` inside the `markdown_content`.\n"
-                "2. **Quote Extraction**: For every fact you state, identify the source Reference Number (N) and copy the **supporting text snippet** into the `quote_text` field of the `citations` object.\n"
-                "3. **Precision**: The `quote_text` should be concise evidence, not the entire document.\n"
+                "2. **Quote Extraction**: For every fact, find the Source Reference Number (N) and copy the **exact supporting text snippet** into the `quote_text` field of the `citations` array.\n"
+                "3. **Precision**: Only cite what is strictly relevant to that specific block.\n"
             )
         else:
             # Original markdown format

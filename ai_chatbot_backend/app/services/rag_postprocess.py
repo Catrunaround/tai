@@ -32,32 +32,43 @@ def extract_channels(text: str) -> dict:
 
 
 def extract_answers(text: str) -> str:
-    """
-    Extract pure Markdown content, removing inline JSON reference objects.
-    Handles the Markdown + inline JSON format where each answer segment
-    is followed by a JSON reference object on its own line.
+    # Try full JSON parse first (fast path for complete JSON)
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and "blocks" in data:
+            markdown_parts = []
+            for block in data.get("blocks", []):
+                if isinstance(block, dict):
+                    content = block.get("markdown_content", "")
+                    if content:
+                        markdown_parts.append(content)
+            return "\n\n".join(markdown_parts)
+    except json.JSONDecodeError:
+        pass
+    pattern = r'"markdown_content"\s*:\s*"([^"]*)'
+    markdown_parts = []
 
-    Input:
-        Markdown content here...
-        {"reference": {"number": 1, "start": "...", "end": "..."}}
-        More markdown content...
-        {"reference": null}
+    for match in re.finditer(pattern, text, re.DOTALL):
+        raw_content = match.group(1)
 
-    Output: Pure Markdown content with JSON lines removed.
-    """
-    lines = text.split('\n')
-    markdown_lines = []
+        # Check if content ends with incomplete escape sequence
+        # Don't include trailing backslash that might be part of \n, \", etc.
+        cleaned_content = raw_content
+        if raw_content.endswith('\\'):
+            cleaned_content = raw_content[:-1]
 
-    for line in lines:
-        stripped = line.strip()
-        # Skip lines that are JSON reference objects
-        markdown_lines.append(line)
+        if cleaned_content:
+            try:
+                # Try to properly unescape JSON escape sequences
+                # Wrap in quotes to make it valid JSON string for parsing
+                unescaped = json.loads('"' + cleaned_content + '"')
+                markdown_parts.append(unescaped)
+            except json.JSONDecodeError:
+                # If unescaping fails (malformed escapes), use raw content
+                # This handles edge cases during streaming
+                markdown_parts.append(cleaned_content)
 
-    # Join lines and clean up excessive blank lines
-    result = '\n'.join(markdown_lines)
-    # Replace multiple consecutive blank lines with double newline
-    result = re.sub(r'\n{3,}', '\n\n', result)
-    return result.strip()
+    return "\n\n".join(markdown_parts)
 
 
 # Environment variables

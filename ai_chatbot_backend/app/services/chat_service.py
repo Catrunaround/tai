@@ -83,6 +83,8 @@ async def chat_stream_parser(
                 break
             # For json_output, extract only answer text from 'final' channel, hiding references
             if json_output and channel == 'final':
+                # For debug
+                current_answer_text = channels['final']
                 current_answer_text = extract_answers(channels['final'])
                 chunk = current_answer_text[len(previous_answer_text):]
                 previous_answer_text = current_answer_text

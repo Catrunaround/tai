@@ -23,7 +23,7 @@ def get_local_model_engine():
         model=LLM_MODEL_ID,
         tensor_parallel_size=TP_SIZE,
         gpu_memory_utilization=GPU_UTIL,
-        max_model_len=10000
+        max_model_len=20000
     )
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     return engine
