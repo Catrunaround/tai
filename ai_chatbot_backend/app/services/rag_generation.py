@@ -148,35 +148,34 @@ def format_chat_msg(messages: List[Message], json_output: bool = True) -> List[M
     )
     if json_output:
         system_message += (
-            "\n### RESPONSE FORMAT (STRICT):\n"
-            "You must output your response in two distinct parts:\n"
-            "1. **Thinking Phase**: Enclose your analysis in `<think>...</think>` tags. Verify references and extract the specific evidence quotes.\n"
-            "2. **Response Phase**: Output a SINGLE valid **JSON Code Block** containing the structured response.\n\n"
+            "### RESPONSE FORMAT (STRICT JSON BLOCK):\n"
+            "You must output a SINGLE valid **JSON Code Block** containing the structured response.\n\n"
+            
+            "### STEP 1: THINKING PHASE (Keep it Brief)\n"
+            "Inside `<think>` tags, quickly plan the structure (headers) and verify references. **Do NOT draft the full content here.** Keep this phase concise.\n\n"
 
+            "### STEP 2: JSON RESPONSE PHASE (Be Verbose)\n"
+            "Output the content in JSON. **This is where you must be detailed.**\n"
             "### JSON SCHEMA:\n"
-            "Your JSON object must follow this structure:\n"
             "```json\n"
             "{\n"
             "  \"blocks\": [\n"
             "    {\n"
             "      \"type\": \"heading\" | \"paragraph\" | \"list_item\" | \"code_block\",\n"
-            "      \"markdown_content\": \"The text content. Use inline markdown (**bold**, `code`) but NO block-level markdown.\",\n"
-            "      \"citations\": [\n"
-            "        {\n"
-            "          \"id\": 1, \n"
-            "          \"quote_text\": \"The exact sentence or phrase from the reference source that supports this block.\"\n"
-            "        }\n"
-            "      ] // Empty list [] if no reference is used.\n"
+            "      // IMPORTANT: For headings, INCLUDE the markdown hashes (e.g., \"## Title\") inside the string.\n"
+            "      // IMPORTANT: For paragraphs, content must be DETAILED, EXPLANATORY, and COMPREHENSIVE (3+ sentences).\n"
+            "      \"markdown_content\": \"The rich text content. Support standard Markdown.\",\n"
+            "      \"citations\": [ { \"id\": 1, \"quote_text\": \"Exact text...\" } ]\n"
             "    }\n"
             "  ]\n"
             "}\n"
             "```\n\n"
 
-            "### CRITICAL RULES FOR BLOCKS & CITATIONS:\n"
-            "1. **Granularity**: Break your answer into logical blocks (e.g., separate paragraphs).\n"
-            "2. **Evidence Extraction**: In the `citations` array, you MUST include the `quote_text`. This text must be an EXACT match or a very close substring from the provided Reference Material.\n"
-            "3. **No Embedded Citations**: Do NOT write `[1]` inside `markdown_content`. The mapping is handled solely by the `citations` array.\n"
-            "4. **Tone**: Maintain the Socratic teaching style defined above inside the content.\n"
+            "### CRITICAL CONTENT RULES:\n"
+            "1. **Verbosity**: Do NOT be brief. Users learn best from detailed explanations, analogies, and examples. Each `paragraph` block should be substantial.\n"
+            "2. **Structure**: Use multiple blocks. Break down complex ideas into: Introduction -> Definition -> Detailed Example -> Code/Application -> Reflection.\n"
+            "3. **Block 1 (The Hook)**: The first block MUST be a warm `paragraph` connecting to the user.\n"
+            "4. **Citations**: Ground your detailed explanations in references using the `citations` array.\n"
         )
     response.append(Message(role="system", content=system_message))
     for message in messages:
