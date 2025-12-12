@@ -32,6 +32,23 @@ def extract_channels(text: str) -> dict:
 
 
 def extract_answers(text: str) -> str:
+    """
+    Extract markdown_content from JSON blocks structure with smooth streaming support.
+    Handles both complete and partial JSON blocks to enable word-by-word streaming.
+
+    Expected format:
+    {
+      "blocks": [
+        {"type": "...", "markdown_content": "...", "citations": [...]},
+        ...
+      ]
+    }
+
+    Returns: Concatenated markdown_content from all blocks (including partial content)
+    """
+    if not text.strip():
+        return ""
+
     # Try full JSON parse first (fast path for complete JSON)
     try:
         data = json.loads(text)
@@ -39,12 +56,17 @@ def extract_answers(text: str) -> str:
             markdown_parts = []
             for block in data.get("blocks", []):
                 if isinstance(block, dict):
-                    content = block.get("markdown_content", "")
+                    content = block.get("markdown_content", "").strip()
                     if content:
                         markdown_parts.append(content)
-            return "\n\n".join(markdown_parts)
+            return _join_markdown_blocks(markdown_parts)
     except json.JSONDecodeError:
         pass
+
+    # Streaming path: extract ALL markdown_content fields, including incomplete ones
+    # Pattern matches both:
+    # - Complete: "markdown_content": "content here"
+    # - Incomplete: "markdown_content": "partial content (no closing quote yet)
     pattern = r'"markdown_content"\s*:\s*"([^"]*)'
     markdown_parts = []
 
@@ -61,14 +83,45 @@ def extract_answers(text: str) -> str:
             try:
                 # Try to properly unescape JSON escape sequences
                 # Wrap in quotes to make it valid JSON string for parsing
-                unescaped = json.loads('"' + cleaned_content + '"')
+                unescaped = json.loads('"' + cleaned_content + '"').strip()
                 markdown_parts.append(unescaped)
             except json.JSONDecodeError:
                 # If unescaping fails (malformed escapes), use raw content
                 # This handles edge cases during streaming
-                markdown_parts.append(cleaned_content)
+                markdown_parts.append(cleaned_content.strip())
 
-    return "\n\n".join(markdown_parts)
+    return _join_markdown_blocks(markdown_parts)
+
+
+def _join_markdown_blocks(parts: list[str]) -> str:
+    """
+    Join markdown blocks with proper spacing for headers and other elements.
+    Ensures markdown headers render correctly by adding appropriate blank lines.
+    """
+    if not parts:
+        return ""
+
+    result = []
+    for i, part in enumerate(parts):
+        if not part:
+            continue
+
+        # Add the content
+        result.append(part)
+
+        # Add spacing after this block (except for the last block)
+        if i < len(parts) - 1:
+            next_part = parts[i + 1] if i + 1 < len(parts) else ""
+
+            # Check if current part ends with a heading or next part starts with one
+            current_is_heading = part.strip().startswith('#')
+            next_is_heading = next_part.strip().startswith('#') if next_part else False
+
+            # Always use double newline for proper markdown spacing
+            # This ensures headers have blank lines before them
+            result.append("\n\n")
+
+    return "".join(result)
 
 
 # Environment variables
