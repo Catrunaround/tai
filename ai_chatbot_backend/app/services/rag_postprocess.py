@@ -31,35 +31,60 @@ def extract_channels(text: str) -> dict:
     }
 
 
-def extract_answers(text: str) -> str:
+def extract_answers(text: str, include_thinking: bool = False) -> str:
     """
     Extract markdown_content from JSON blocks structure with smooth streaming support.
     Handles both complete and partial JSON blocks to enable word-by-word streaming.
 
-    Expected format:
-    {
-      "blocks": [
-        {"type": "...", "markdown_content": "...", "citations": [...]},
-        ...
-      ]
-    }
+    Expected formats:
+    1. Original format (prompt-based):
+       {
+         "blocks": [
+           {"type": "...", "markdown_content": "...", "citations": [...]},
+           ...
+         ]
+       }
+
+    2. Structured format (with response_format schema):
+       {
+         "thinking": "Brief reasoning...",
+         "blocks": [
+           {"type": "...", "markdown_content": "...", "citations": [...]},
+           ...
+         ]
+       }
+
+    Args:
+        text: The JSON text to parse
+        include_thinking: If True, prepend thinking content (for debugging/display)
 
     Returns: Concatenated markdown_content from all blocks (including partial content)
     """
     if not text.strip():
         return ""
 
+    result_parts = []
+
     # Try full JSON parse first (fast path for complete JSON)
     try:
         data = json.loads(text)
-        if isinstance(data, dict) and "blocks" in data:
-            markdown_parts = []
-            for block in data.get("blocks", []):
-                if isinstance(block, dict):
-                    content = block.get("markdown_content", "").strip()
-                    if content:
-                        markdown_parts.append(content)
-            return _join_markdown_blocks(markdown_parts)
+        if isinstance(data, dict):
+            # Extract thinking if present and requested
+            if include_thinking and "thinking" in data:
+                thinking = data.get("thinking", "").strip()
+                if thinking:
+                    result_parts.append(f"*Thinking: {thinking}*\n\n")
+
+            # Extract blocks
+            if "blocks" in data:
+                markdown_parts = []
+                for block in data.get("blocks", []):
+                    if isinstance(block, dict):
+                        content = block.get("markdown_content", "").strip()
+                        if content:
+                            markdown_parts.append(content)
+                result_parts.append(_join_markdown_blocks(markdown_parts))
+                return "".join(result_parts)
     except json.JSONDecodeError:
         pass
 
@@ -145,6 +170,93 @@ GUIDED = GuidedDecodingParams(json=MEMORY_SYNOPSIS_JSON_SCHEMA)
 SAMPLING_JSON = SamplingParams(
     temperature=0.0, top_p=1.0, max_tokens=800, guided_decoding=GUIDED, skip_special_tokens=False
 )
+
+# ========================
+# Response Blocks JSON Schema (for structured output mode)
+# ========================
+# This schema enforces valid JSON output format for chat responses.
+# Use this with response_format parameter (OpenAI) or GuidedDecodingParams (VLLM)
+# to guarantee structurally valid JSON instead of relying on prompt instructions.
+
+CITATION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Reference number from the provided context"
+        },
+        "quote_text": {
+            "type": "string",
+            "description": "Exact quoted text from the reference"
+        }
+    },
+    "required": ["id", "quote_text"],
+    "additionalProperties": False
+}
+
+BLOCK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": [
+                "heading",           # Section headers with markdown hashes (e.g., "## Title")
+                "paragraph",         # Standard text paragraphs
+                "list_item",         # Bullet or numbered list items
+                "code_block",        # Code snippets with syntax highlighting
+                "blockquote",        # Quoted content
+                "table",             # Markdown tables
+                "math",              # Mathematical expressions (LaTeX)
+                "callout",           # Important notes, warnings, tips
+                "definition",        # Term definitions
+                "example",           # Examples or illustrations
+                "summary",           # Summary or conclusion blocks
+            ],
+            "description": "The type of content block"
+        },
+        "markdown_content": {
+            "type": "string",
+            "description": "Rich text content in Markdown format. For headings, include the markdown hashes (e.g., '## Title')"
+        },
+        "citations": {
+            "type": "array",
+            "items": CITATION_SCHEMA,
+            "description": "Citations referencing the provided context"
+        }
+    },
+    "required": ["type", "markdown_content", "citations"],
+    "additionalProperties": False
+}
+
+RESPONSE_BLOCKS_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "thinking": {
+            "type": "string",
+            "description": "Brief reasoning about structure, references to use, and approach. Keep concise - do NOT draft full content here."
+        },
+        "blocks": {
+            "type": "array",
+            "items": BLOCK_SCHEMA,
+            "description": "Array of content blocks forming the response"
+        }
+    },
+    "required": ["thinking", "blocks"],
+    "additionalProperties": False
+}
+
+# OpenAI response_format compatible schema (for use with response_format parameter)
+RESPONSE_BLOCKS_OPENAI_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "chat_response_blocks",
+        "strict": True,
+        "schema": RESPONSE_BLOCKS_JSON_SCHEMA
+    }
+}
+
+# VLLM GuidedDecodingParams for structured response blocks
+GUIDED_RESPONSE_BLOCKS = GuidedDecodingParams(json=RESPONSE_BLOCKS_JSON_SCHEMA)
 
 
 @dataclass
