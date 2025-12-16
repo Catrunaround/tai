@@ -193,10 +193,10 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
             # The JSON schema is enforced externally, so we just need to guide content quality
             system_message += (
                 "\n\n### RESPONSE FORMAT:\n"
-                "Return ONLY a single JSON object with the following format (no code fences, no `<think>` tags):\n"
+                "Return ONLY a single JSON object with the following format (do NOT wrap the JSON in code fences; no `<think>` tags):\n"
                 "- `blocks`: Array of content blocks, each with:\n"
                 "  - `type`: One of: heading, paragraph, list_item, code_block, blockquote, table, math, callout, definition, example, summary\n"
-                "  - `markdown_content`: The rich text content (for headings, include markdown hashes like \"## Title\")\n"
+                "  - `markdown_content`: Unrestricted Markdown content. Headings may use any level of hashes (e.g., \"# Title\", \"## Section\", \"### Subsection\"), and any Markdown syntax is allowed inside this string (including fenced code blocks like ```python ... ```).\n"
                 "  - `citations`: Array of references used [{\"id\": <ref_number>, \"quote_text\": \"exact text...\"}]\n\n"
 
                 "### CONTENT RULES:\n"
@@ -209,16 +209,16 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
             # Original prompt-based JSON instructions (relies on model following instructions)
             system_message += (
                 "### RESPONSE FORMAT (STRICT JSON):\n"
-                "You must output a SINGLE valid JSON object (no code fences, no `<think>` tags, no extra text).\n"
+                "You must output a SINGLE valid JSON object (do NOT wrap the JSON in code fences; no `<think>` tags; no extra text).\n"
                 "Output the content in JSON. **This is where you must be detailed.**\n"
                 "### JSON SCHEMA:\n"
                 "{\n"
                 "  \"blocks\": [\n"
                 "    {\n"
-                "      \"type\": \"heading\" | \"paragraph\" | \"list_item\" | \"code_block\",\n"
-                "      // IMPORTANT: For headings, INCLUDE the markdown hashes (e.g., \"## Title\") inside the string.\n"
+                "      \"type\": \"heading\" | \"paragraph\" | \"list_item\" | \"code_block\" | \"blockquote\" | \"table\" | \"math\" | \"callout\" | \"definition\" | \"example\" | \"summary\",\n"
+                "      // IMPORTANT: For headings, INCLUDE the markdown hashes (e.g., \"# Title\", \"## Section\", \"### Subsection\") inside the string.\n"
                 "      // IMPORTANT: For paragraphs, content must be DETAILED, EXPLANATORY, and COMPREHENSIVE (3+ sentences).\n"
-                "      \"markdown_content\": \"The rich text content. Support standard Markdown.\",\n"
+                "      \"markdown_content\": \"Unrestricted Markdown content (any Markdown is allowed inside this string, including fenced code blocks like ```python ... ```).\",\n"
                 "      \"citations\": [ { \"id\": 1, \"quote_text\": \"Exact text...\" } ]\n"
                 "    }\n"
                 "  ]\n"
