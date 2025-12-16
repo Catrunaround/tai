@@ -17,11 +17,19 @@ from app.dependencies.model import LLM_MODEL_ID
 
 # TOKENIZER_MODEL_ID = "kaitchup/GLM-Z1-32B-0414-autoround-gptq-4bit"
 # RAG-Pipeline Shared Resources
-SAMPLING = SamplingParams(temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000)
+# Block "thinking" wrappers at generation-time (built-in vLLM sampling param).
+# This helps prevent models like Qwen-*Thinking* from spending tokens on `<think>...</think>` output.
+NO_THINK_BAD_WORDS = ["<think>", "</think>"]
+
+SAMPLING = SamplingParams(
+    temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000,
+    bad_words=NO_THINK_BAD_WORDS
+)
 # Sampling params with structured JSON output (uses GuidedDecodingParams for guaranteed valid JSON)
 SAMPLING_STRUCTURED = SamplingParams(
     temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000,
-    guided_decoding=GUIDED_RESPONSE_BLOCKS
+    guided_decoding=GUIDED_RESPONSE_BLOCKS,
+    bad_words=NO_THINK_BAD_WORDS
 )
 TOKENIZER = AutoTokenizer.from_pretrained(LLM_MODEL_ID)
 
@@ -46,7 +54,7 @@ async def generate_chat_response(
         audio_response: bool = False,
         sid: Optional[str] = None,
         json_output: bool = True,
-        use_structured_json: bool = False  # New option: use response_format schema instead of prompt-based JSON
+        use_structured_json: bool = True  # New option: use response_format schema instead of prompt-based JSON
 ) -> Tuple[Any, List[str | Any]]:
     """
     Build an augmented message with references and run LLM inference.
@@ -185,8 +193,7 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
             # The JSON schema is enforced externally, so we just need to guide content quality
             system_message += (
                 "\n\n### RESPONSE FORMAT:\n"
-                "Your response will be structured as JSON with the following format:\n"
-                "- `thinking`: Brief reasoning about structure, references to use, and approach (keep concise)\n"
+                "Return ONLY a single JSON object with the following format (no code fences, no `<think>` tags):\n"
                 "- `blocks`: Array of content blocks, each with:\n"
                 "  - `type`: One of: heading, paragraph, list_item, code_block, blockquote, table, math, callout, definition, example, summary\n"
                 "  - `markdown_content`: The rich text content (for headings, include markdown hashes like \"## Title\")\n"
@@ -201,16 +208,10 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
         else:
             # Original prompt-based JSON instructions (relies on model following instructions)
             system_message += (
-                "### RESPONSE FORMAT (STRICT JSON BLOCK):\n"
-                "You must output a SINGLE valid **JSON Code Block** containing the structured response.\n\n"
-
-                "### STEP 1: THINKING PHASE (Keep it Brief)\n"
-                "Inside `<think>` tags, quickly plan the structure (headers) and verify references. **Do NOT draft the full content here.** Keep this phase concise.\n\n"
-
-                "### STEP 2: JSON RESPONSE PHASE (Be Verbose)\n"
+                "### RESPONSE FORMAT (STRICT JSON):\n"
+                "You must output a SINGLE valid JSON object (no code fences, no `<think>` tags, no extra text).\n"
                 "Output the content in JSON. **This is where you must be detailed.**\n"
                 "### JSON SCHEMA:\n"
-                "```json\n"
                 "{\n"
                 "  \"blocks\": [\n"
                 "    {\n"
@@ -222,7 +223,7 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "    }\n"
                 "  ]\n"
                 "}\n"
-                "```\n\n"
+                "\n"
 
                 "### CRITICAL CONTENT RULES:\n"
                 "1. **Verbosity**: Do NOT be brief. Users learn best from detailed explanations, analogies, and examples. Each `paragraph` block should be substantial.\n"

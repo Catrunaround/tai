@@ -485,12 +485,228 @@ def merge_course_databases_with_stats(
     )
 
 
+# ========================
+# Batch File Conversion
+# ========================
+
+def batch_convert_files(
+    files: List[Union[str, Path]],
+    course_code: str,
+    course_name: str,
+    output_dir: Union[str, Path],
+    db_path: Union[str, Path],
+    input_root: Optional[Union[str, Path]] = None,
+    auto_embed: bool = True,
+    progress_callback: Optional[callable] = None,
+) -> Dict[str, Any]:
+    """
+    Convert multiple files with progress tracking.
+
+    This function processes a list of files through the conversion pipeline,
+    reporting progress via an optional callback. It continues processing
+    even if some files fail, collecting all errors for the final report.
+
+    Args:
+        files: List of file paths to convert
+        course_code: Course identifier (e.g., "CS61A")
+        course_name: Full course name
+        output_dir: Directory for converted output files
+        db_path: Path to SQLite database for metadata storage
+        input_root: Root directory for relative path calculation.
+                   If None, uses each file's parent directory.
+        auto_embed: Whether to generate embeddings after conversion (default: True)
+        progress_callback: Optional callback function called for each file:
+                          callback(file_name: str, status: str, error: Optional[str])
+                          - status: "started", "completed", "failed", "skipped"
+                          - error: Error message if status is "failed"
+
+    Returns:
+        Dictionary containing:
+            - files_processed: Number of files successfully converted
+            - files_failed: Number of files that failed conversion
+            - files_skipped: Number of files skipped (cache hits)
+            - total_chunks: Total chunks created across all files
+            - errors: List of error details [{file_name, error_message}]
+            - results: List of per-file results [{file_name, file_uuid, chunks_count, status}]
+
+    Example:
+        >>> def on_progress(file_name, status, error):
+        ...     print(f"{file_name}: {status}")
+        ...
+        >>> result = batch_convert_files(
+        ...     files=["doc1.pdf", "doc2.html"],
+        ...     course_code="CS61A",
+        ...     course_name="Structure and Interpretation of Computer Programs",
+        ...     output_dir="/path/to/output",
+        ...     db_path="/path/to/db.sqlite",
+        ...     progress_callback=on_progress
+        ... )
+        >>> print(f"Processed {result['files_processed']} files, {result['files_failed']} failed")
+    """
+    from file_conversion_router.services.directory_service import (
+        process_single_file,
+        ensure_chunk_db,
+        converter_mapping,
+    )
+    from file_conversion_router.config import get_allowed_extensions
+
+    output_dir = Path(output_dir)
+    db_path = Path(db_path)
+    input_root = Path(input_root) if input_root else None
+
+    # Ensure output directory exists
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize database connection
+    conn = ensure_chunk_db(db_path)
+
+    # Track results
+    stats = {
+        "files_processed": 0,
+        "files_failed": 0,
+        "files_skipped": 0,
+        "total_chunks": 0,
+        "errors": [],
+        "results": [],
+    }
+
+    allowed_extensions = get_allowed_extensions()
+
+    try:
+        for file_path in files:
+            file_path = Path(file_path)
+            file_name = file_path.name
+
+            # Notify progress: started
+            if progress_callback:
+                progress_callback(file_name, "started", None)
+
+            # Validate file exists
+            if not file_path.exists():
+                error_msg = f"File not found: {file_path}"
+                logger.error(error_msg)
+                stats["files_failed"] += 1
+                stats["errors"].append({"file_name": file_name, "error_message": error_msg})
+                stats["results"].append({
+                    "file_name": file_name,
+                    "file_uuid": None,
+                    "chunks_count": 0,
+                    "status": "failed",
+                    "error": error_msg,
+                })
+                if progress_callback:
+                    progress_callback(file_name, "failed", error_msg)
+                continue
+
+            # Validate file extension
+            if file_path.suffix.lower() not in allowed_extensions:
+                error_msg = f"Unsupported file type: {file_path.suffix}. Allowed: {allowed_extensions}"
+                logger.warning(error_msg)
+                stats["files_failed"] += 1
+                stats["errors"].append({"file_name": file_name, "error_message": error_msg})
+                stats["results"].append({
+                    "file_name": file_name,
+                    "file_uuid": None,
+                    "chunks_count": 0,
+                    "status": "failed",
+                    "error": error_msg,
+                })
+                if progress_callback:
+                    progress_callback(file_name, "failed", error_msg)
+                continue
+
+            # Process the file
+            try:
+                file_input_root = input_root if input_root else file_path.parent
+
+                chunks, metadata, file_uuid = process_single_file(
+                    input_file_path=file_path,
+                    output_dir=output_dir,
+                    course_name=course_name,
+                    course_code=course_code,
+                    conn=conn,
+                    input_root=file_input_root,
+                )
+
+                # Check if it was a cache hit
+                if isinstance(metadata, dict) and metadata.get("cache_hit"):
+                    stats["files_skipped"] += 1
+                    stats["results"].append({
+                        "file_name": file_name,
+                        "file_uuid": file_uuid,
+                        "chunks_count": 0,
+                        "status": "skipped",
+                    })
+                    if progress_callback:
+                        progress_callback(file_name, "skipped", None)
+                else:
+                    chunks_count = len(chunks) if chunks else 0
+                    stats["files_processed"] += 1
+                    stats["total_chunks"] += chunks_count
+                    stats["results"].append({
+                        "file_name": file_name,
+                        "file_uuid": file_uuid,
+                        "chunks_count": chunks_count,
+                        "status": "completed",
+                    })
+                    if progress_callback:
+                        progress_callback(file_name, "completed", None)
+
+            except Exception as e:
+                error_msg = f"{type(e).__name__}: {str(e)[:200]}"
+                logger.error(f"Failed to convert {file_path}: {error_msg}")
+                stats["files_failed"] += 1
+                stats["errors"].append({"file_name": file_name, "error_message": error_msg})
+                stats["results"].append({
+                    "file_name": file_name,
+                    "file_uuid": None,
+                    "chunks_count": 0,
+                    "status": "failed",
+                    "error": error_msg,
+                })
+                if progress_callback:
+                    progress_callback(file_name, "failed", error_msg)
+                continue
+
+        # Generate embeddings if requested and files were processed
+        if auto_embed and stats["files_processed"] > 0:
+            logger.info(f"Generating embeddings for {stats['files_processed']} processed files...")
+            try:
+                from file_conversion_router.embedding.embedding_create import embedding_create
+                from file_conversion_router.embedding.file_embedding_create import embed_files_from_markdown
+
+                # Generate chunk embeddings
+                embedding_create(str(db_path), course_code)
+
+                # Generate file embeddings
+                embed_files_from_markdown(
+                    db_path=str(db_path),
+                    data_dir=str(output_dir),
+                    course_filter=course_code,
+                    force_recompute=False,
+                )
+                logger.info("Embedding generation completed")
+            except Exception as e:
+                logger.error(f"Failed to generate embeddings: {str(e)}")
+                stats["embedding_error"] = str(e)
+
+    finally:
+        conn.close()
+
+    logger.info(
+        f"Batch conversion completed: {stats['files_processed']} processed, "
+        f"{stats['files_failed']} failed, {stats['files_skipped']} skipped"
+    )
+    return stats
+
+
 # Public API exports
 __all__ = [
     # === Core Workflow Functions ===
     'convert_directory',                    # Step 1: Convert documents
     'process_courses_from_master_config',   # Step 2: Batch convert
     'merge_course_databases_with_stats',    # Step 3: Merge databases (recommended)
+    'batch_convert_files',                  # Batch convert multiple files with progress
 
     # === Course Management ===
     'update_master_config_status',

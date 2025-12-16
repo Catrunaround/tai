@@ -11,24 +11,40 @@ from app.core.models.chat_completion import Message
 import re
 
 def extract_channels(text: str) -> dict:
-    if "</think>" in text:
-        parts = text.split("</think>", 1)
-        return {
-            "analysis": parts[0].strip(),
-            "final": parts[1].strip()
-        }
+    """
+    Best-effort extraction of "analysis" vs "final" from models that emit `<think>...</think>`
+    wrappers (common in "thinking" tuned OSS models).
 
-    incomplete_patterns = ["</think", "</", "<"]
-    cleaned_text = text
-    for pattern in incomplete_patterns:
-        if text.endswith(pattern):
-            cleaned_text = text[:-len(pattern)]
-            break
+    - If the output starts with a `<think>` block, treat its contents as `analysis` and everything
+      after the closing tag as `final`.
+    - Otherwise, treat the entire text as `final` (important for JSON-guided decoding where no
+      think wrapper is present).
+    """
+    if not text:
+        return {"analysis": "", "final": ""}
 
-    return {
-        "analysis": cleaned_text.strip(),
-        "final": ""
-    }
+    # Only treat `<think>...</think>` as a wrapper when it is a leading block.
+    if re.match(r"^\s*<think>", text):
+        if "</think>" in text:
+            # Use a regex to avoid false splits on `</think>` appearing later in JSON strings.
+            m = re.match(r"^\s*<think>\s*(?P<analysis>.*?)\s*</think>\s*(?P<final>.*)\Z", text, re.DOTALL)
+            if m:
+                return {"analysis": m.group("analysis").strip(), "final": m.group("final").strip()}
+
+            parts = text.split("</think>", 1)
+            return {"analysis": parts[0].strip(), "final": parts[1].strip()}
+
+        # Streaming: `<think>` started but hasn't closed yet.
+        incomplete_patterns = ["</think", "</", "<"]
+        cleaned_text = text
+        for pattern in incomplete_patterns:
+            if text.endswith(pattern):
+                cleaned_text = text[:-len(pattern)]
+                break
+        return {"analysis": cleaned_text.strip(), "final": ""}
+
+    # No think wrapper → everything is final (supports pure-JSON outputs).
+    return {"analysis": "", "final": text.strip()}
 
 
 def extract_answers(text: str, include_thinking: bool = False) -> str:
@@ -45,14 +61,7 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
          ]
        }
 
-    2. Structured format (with response_format schema):
-       {
-         "thinking": "Brief reasoning...",
-         "blocks": [
-           {"type": "...", "markdown_content": "...", "citations": [...]},
-           ...
-         ]
-       }
+    2. (Legacy) Structured format with an optional `thinking` field.
 
     Args:
         text: The JSON text to parse
@@ -69,7 +78,7 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
     try:
         data = json.loads(text)
         if isinstance(data, dict):
-            # Extract thinking if present and requested
+            # Extract legacy thinking if present and requested
             if include_thinking and "thinking" in data:
                 thinking = data.get("thinking", "").strip()
                 if thinking:
@@ -231,17 +240,13 @@ BLOCK_SCHEMA = {
 RESPONSE_BLOCKS_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "thinking": {
-            "type": "string",
-            "description": "Brief reasoning about structure, references to use, and approach. Keep concise - do NOT draft full content here."
-        },
         "blocks": {
             "type": "array",
             "items": BLOCK_SCHEMA,
             "description": "Array of content blocks forming the response"
         }
     },
-    "required": ["thinking", "blocks"],
+    "required": ["blocks"],
     "additionalProperties": False
 }
 

@@ -48,6 +48,38 @@ MASTER_CONFIG_PATH = FILE_CONVERSION_ROUTER_DIR / 'configs' / 'courses_master_co
 COLLECTIVE_DB_PATH = COURSES_OUT_DIR / 'collective_metadata.db'
 DB_DIR = COURSES_OUT_DIR / 'db'
 
+# Batch Upload Configuration
+BATCH_UPLOAD_CONFIG = {
+    "max_file_size_mb": 100,           # Max size per file in MB
+    "max_total_size_mb": 500,          # Max total upload size in MB
+    "max_files_per_batch": 100,        # Max files per batch upload
+    "allowed_extensions": [
+        ".pdf", ".md", ".html", ".ipynb", ".py", ".rst",
+        ".mp4", ".mkv", ".webm", ".mov"
+    ],
+    "temp_dir": Path(os.getenv('RAG_TEMP_DIR', '/tmp/rag_batch_uploads')),
+    "cleanup_delay_seconds": 3600,     # Cleanup temp files after 1 hour
+}
+
+# Helper functions for batch upload config
+def get_allowed_extensions() -> list:
+    """Get list of allowed file extensions for batch upload."""
+    return BATCH_UPLOAD_CONFIG["allowed_extensions"]
+
+def get_max_file_size_bytes() -> int:
+    """Get max file size in bytes."""
+    return BATCH_UPLOAD_CONFIG["max_file_size_mb"] * 1024 * 1024
+
+def get_max_total_size_bytes() -> int:
+    """Get max total upload size in bytes."""
+    return BATCH_UPLOAD_CONFIG["max_total_size_mb"] * 1024 * 1024
+
+def get_temp_upload_dir() -> Path:
+    """Get temp directory for batch uploads, creating if needed."""
+    temp_dir = BATCH_UPLOAD_CONFIG["temp_dir"]
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
+
 
 def get_course_db_path(course_code: str) -> Path:
     """Get the database path for a specific course.
