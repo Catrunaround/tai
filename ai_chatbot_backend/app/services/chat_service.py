@@ -206,6 +206,23 @@ async def chat_stream_parser(
                     ref = segment.get('reference')
                     if ref is not None and isinstance(ref, dict) and 'number' in ref:
                         mentioned_references.add(int(ref['number']))
+            # Blocks structure: {"blocks": [{"type": "...", "markdown_content": "...", "citations": [{"id": 1, ...}]}]}
+            elif isinstance(json_data, dict) and isinstance(json_data.get("blocks"), list):
+                for block in json_data.get("blocks", []):
+                    if not isinstance(block, dict):
+                        continue
+                    citations = block.get("citations", [])
+                    if not isinstance(citations, list):
+                        continue
+                    for citation in citations:
+                        if not isinstance(citation, dict):
+                            continue
+                        if "id" not in citation:
+                            continue
+                        try:
+                            mentioned_references.add(int(citation["id"]))
+                        except (TypeError, ValueError):
+                            continue
             # Fallback for old structure
             elif 'mentioned_contexts' in json_data and isinstance(json_data['mentioned_contexts'], list):
                 for context in json_data['mentioned_contexts']:

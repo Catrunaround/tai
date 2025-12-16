@@ -87,7 +87,7 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
                 markdown_parts = []
                 for block in data.get("blocks", []):
                     if isinstance(block, dict):
-                        content = block.get("markdown_content", "").strip()
+                        content = _render_block_markdown(block)
                         if content:
                             markdown_parts.append(content)
                 result_parts.append(_join_markdown_blocks(markdown_parts))
@@ -123,6 +123,46 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
                 markdown_parts.append(cleaned_content.strip())
 
     return _join_markdown_blocks(markdown_parts)
+
+
+def _render_block_markdown(block: dict) -> str:
+    block_type = block.get("type")
+    if not isinstance(block_type, str):
+        block_type = ""
+    block_type = block_type.strip()
+
+    content = block.get("markdown_content", "")
+    if not isinstance(content, str):
+        return ""
+
+    # Preserve internal newlines; just trim outer whitespace.
+    stripped = content.strip()
+    if not stripped:
+        return ""
+
+    if block_type == "heading":
+        # Backcompat: allow markdown headings already containing hashes.
+        if stripped.startswith("#"):
+            return stripped
+        level = block.get("level")
+        if isinstance(level, int) and 1 <= level <= 6:
+            prefix = "#" * level
+        else:
+            # Default to level 2 to match prior "## Title" guidance.
+            prefix = "##"
+        return f"{prefix} {stripped}"
+
+    if block_type == "code_block":
+        # Backcompat: allow fenced Markdown already containing ``` fences.
+        if stripped.lstrip().startswith("```"):
+            return stripped
+        language = block.get("language")
+        lang = language.strip() if isinstance(language, str) else ""
+        fence = f"```{lang}".rstrip()
+        code = content.rstrip("\n")
+        return f"{fence}\n{code}\n```"
+
+    return stripped
 
 
 def _join_markdown_blocks(parts: list[str]) -> str:
@@ -219,9 +259,19 @@ BLOCK_SCHEMA = {
             ],
             "description": "The type of content block"
         },
+        "level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 6,
+            "description": "Heading level (1-6). Use only when type is 'heading'."
+        },
+        "language": {
+            "type": "string",
+            "description": "Programming language for code blocks (e.g., 'python', 'javascript'). Use only when type is 'code_block'."
+        },
         "markdown_content": {
             "type": "string",
-            "description": "Rich text content in Markdown format. For headings, include the markdown hashes (e.g., '## Title')"
+            "description": "Rich text content in Markdown format. For headings, either include `level` (preferred) with plain text here, or include markdown hashes (e.g., '## Title'). For code blocks, either include raw code here with `language`, or include fenced Markdown."
         },
         "citations": {
             "type": "array",
