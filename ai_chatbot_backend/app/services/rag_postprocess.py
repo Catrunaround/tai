@@ -47,11 +47,11 @@ def extract_channels(text: str) -> dict:
     return {"analysis": "", "final": text.strip()}
 
 
+
 def extract_answers(text: str, include_thinking: bool = False) -> str:
     """
     Extract markdown_content from JSON blocks structure with smooth streaming support.
     Handles both complete and partial JSON blocks to enable word-by-word streaming.
-
     Expected formats:
     1. Original format (prompt-based):
        {
@@ -66,12 +66,10 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
     Args:
         text: The JSON text to parse
         include_thinking: If True, prepend thinking content (for debugging/display)
-
     Returns: Concatenated markdown_content from all blocks (including partial content)
     """
     if not text.strip():
         return ""
-
     result_parts = []
 
     # Try full JSON parse first (fast path for complete JSON)
@@ -139,7 +137,6 @@ def _join_markdown_blocks(parts: list[str]) -> str:
     for i, part in enumerate(parts):
         if not part:
             continue
-
         # Add the content
         result.append(part)
 
@@ -154,7 +151,6 @@ def _join_markdown_blocks(parts: list[str]) -> str:
             # Always use double newline for proper markdown spacing
             # This ensures headers have blank lines before them
             result.append("\n\n")
-
     return "".join(result)
 
 
