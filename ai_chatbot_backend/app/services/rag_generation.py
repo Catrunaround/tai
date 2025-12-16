@@ -193,7 +193,7 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
             # The JSON schema is enforced externally, so we just need to guide content quality
             system_message += (
                 "\n\n### RESPONSE FORMAT:\n"
-                "Return ONLY a single JSON object with the following format (no code fences, no `<think>` tags):\n"
+                "Return ONLY a single JSON object with the following format (do NOT wrap the JSON in code fences; no `<think>` tags):\n"
                 "- `blocks`: Array of content blocks, each with:\n"
                 "  - `type`: One of: heading, paragraph, list_item, code_block, blockquote, table, math, callout, definition, example, summary\n"
                 "  - `level` (optional): Heading level 1-6 (only for `type=heading`)\n"
@@ -212,7 +212,7 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
             # Original prompt-based JSON instructions (relies on model following instructions)
             system_message += (
                 "### RESPONSE FORMAT (STRICT JSON):\n"
-                "You must output a SINGLE valid JSON object (no code fences, no `<think>` tags, no extra text).\n"
+                "You must output a SINGLE valid JSON object (do NOT wrap the JSON in code fences; no `<think>` tags; no extra text).\n"
                 "Output the content in JSON. **This is where you must be detailed.**\n"
                 "### JSON SCHEMA:\n"
                 "{\n"

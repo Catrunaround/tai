@@ -95,11 +95,17 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
     except json.JSONDecodeError:
         pass
 
-    # Streaming path: extract ALL markdown_content fields, including incomplete ones
+    # Streaming path: extract ALL markdown_content fields, including incomplete ones.
+    # Must handle escaped quotes (e.g., \" inside code blocks / JSON snippets) and partial strings.
+    #
     # Pattern matches both:
     # - Complete: "markdown_content": "content here"
     # - Incomplete: "markdown_content": "partial content (no closing quote yet)
-    pattern = r'"markdown_content"\s*:\s*"([^"]*)'
+    #
+    # Notes:
+    # - `(?<!\\)` avoids matching escaped quotes that could appear inside JSON strings.
+    # - `(?:\\.|[^"\\])*` captures valid JSON string content, including escaped quotes.
+    pattern = r'(?<!\\)"markdown_content"\s*:\s*"((?:\\.|[^"\\])*)'
     markdown_parts = []
 
     for match in re.finditer(pattern, text, re.DOTALL):
