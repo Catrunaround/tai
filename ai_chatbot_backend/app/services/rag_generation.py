@@ -194,6 +194,7 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
             system_message += (
                 "\n\n### RESPONSE FORMAT:\n"
                 "Return ONLY a single JSON object with the following format (do NOT wrap the JSON in code fences; no `<think>` tags):\n"
+                "- `thinking`: Your step-by-step reasoning process explaining how you arrived at the answer\n"
                 "- `blocks`: Array of content blocks, each with:\n"
                 "  - `type`: One of: heading, paragraph, list_item, code_block, blockquote, table, math, callout, definition, example, summary\n"
                 "  - `level` (optional): Heading level 1-6 (only for `type=heading`)\n"
@@ -204,9 +205,10 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "### CONTENT RULES:\n"
                 "1. **Verbosity**: Do NOT be brief. Each paragraph block should be substantial (3+ sentences).\n"
                 "2. **Structure**: Use multiple blocks. Break down: Introduction -> Definition -> Example -> Application -> Reflection.\n"
-                "   - Use `heading` blocks with multiple levels (`level` 2 for sections, 3 for subsections).\n"
+                "   - Use `heading` blocks with markdown syntax (## for sections, ### for subsections).\n"
                 "3. **Block 1 (The Hook)**: First block MUST be a warm paragraph connecting to the user.\n"
                 "4. **Citations**: Ground explanations in references using the citations array.\n"
+                "5. **Thinking**: In the `thinking` field, explain your reasoning: analyze the question, identify relevant references, and describe how you synthesized the answer.\n"
             )
         else:
             # Original prompt-based JSON instructions (relies on model following instructions)
@@ -216,15 +218,14 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "Output the content in JSON. **This is where you must be detailed.**\n"
                 "### JSON SCHEMA:\n"
                 "{\n"
+                "  \"thinking\": \"Your step-by-step reasoning process explaining how you arrived at the answer\",\n"
                 "  \"blocks\": [\n"
                 "    {\n"
                 "      \"type\": \"heading\" | \"paragraph\" | \"list_item\" | \"code_block\",\n"
-                "      // OPTIONAL: For headings, prefer: set \"level\": 1-6 and keep markdown_content as plain title (no leading #).\n"
-                "      // OPTIONAL: For code blocks, add \"language\": \"python\" | \"js\" | ... and keep markdown_content as raw code (no ``` fences).\n"
-                "      // BACKCOMPAT: You may still include markdown hashes/fences directly inside markdown_content.\n"
+                "      // For headings: use markdown syntax with # in markdown_content (e.g. \"## Section Title\").\n"
+                "      // For code blocks: add \"language\": \"python\" | \"js\" | ... and keep markdown_content as raw code (no ``` fences).\n"
                 "      // IMPORTANT: For paragraphs, content must be DETAILED, EXPLANATORY, and COMPREHENSIVE (3+ sentences).\n"
                 "      \"markdown_content\": \"The rich text content. Support standard Markdown.\",\n"
-                "      // \"level\": 2,\n"
                 "      // \"language\": \"python\",\n"
                 "      \"citations\": [ { \"id\": 1, \"quote_text\": \"Exact text...\" } ]\n"
                 "    }\n"
@@ -235,8 +236,10 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "### CRITICAL CONTENT RULES:\n"
                 "1. **Verbosity**: Do NOT be brief. Users learn best from detailed explanations, analogies, and examples. Each `paragraph` block should be substantial.\n"
                 "2. **Structure**: Use multiple blocks. Break down complex ideas into: Introduction -> Definition -> Detailed Example -> Code/Application -> Reflection.\n"
+                "   - Use `heading` blocks with markdown syntax (## for sections, ### for subsections).\n"
                 "3. **Block 1 (The Hook)**: The first block MUST be a warm `paragraph` connecting to the user.\n"
                 "4. **Citations**: Ground your detailed explanations in references using the `citations` array.\n"
+                "5. **Thinking**: In the `thinking` field, explain your reasoning: analyze the question, identify relevant references, and describe how you synthesized the answer.\n"
             )
     response.append(Message(role="system", content=system_message))
     for message in messages:

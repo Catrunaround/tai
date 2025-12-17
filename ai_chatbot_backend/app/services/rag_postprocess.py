@@ -292,13 +292,17 @@ BLOCK_SCHEMA = {
 RESPONSE_BLOCKS_JSON_SCHEMA = {
     "type": "object",
     "properties": {
+        "thinking": {
+            "type": "string",
+            "description": "Step-by-step reasoning explaining how the answer was derived from the references"
+        },
         "blocks": {
             "type": "array",
             "items": BLOCK_SCHEMA,
             "description": "Array of content blocks forming the response"
         }
     },
-    "required": ["blocks"],
+    "required": ["thinking", "blocks"],
     "additionalProperties": False
 }
 
