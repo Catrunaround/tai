@@ -10,6 +10,160 @@ from vllm.sampling_params import GuidedDecodingParams
 from app.core.models.chat_completion import Message
 import re
 
+
+def _parse_json_string_token(text: str, quote_index: int) -> tuple[str, int, bool]:
+    """
+    Parse a JSON string token starting at the opening `"` at `quote_index`.
+
+    Returns:
+        raw_contents: The raw (still-escaped) contents between quotes.
+        next_index: Index immediately after the closing quote (or end-of-text if incomplete).
+        complete: True if a closing quote was found, else False (streaming/incomplete JSON).
+    """
+    raw_chars: list[str] = []
+    index = quote_index + 1
+    escape_next = False
+    text_len = len(text)
+    while index < text_len:
+        ch = text[index]
+        if escape_next:
+            raw_chars.append(ch)
+            escape_next = False
+            index += 1
+            continue
+        if ch == "\\":
+            raw_chars.append(ch)
+            escape_next = True
+            index += 1
+            continue
+        if ch == '"':
+            return "".join(raw_chars), index + 1, True
+        raw_chars.append(ch)
+        index += 1
+    return "".join(raw_chars), index, False
+
+
+def _unescape_json_string_prefix(raw: str) -> str:
+    """
+    Best-effort unescape of a *prefix* of JSON string contents.
+
+    This is streaming-friendly: it only decodes escape sequences that are complete in `raw`
+    and ignores any trailing incomplete escape sequence.
+    """
+    if not raw:
+        return ""
+
+    out_chars: list[str] = []
+    index = 0
+    raw_len = len(raw)
+    while index < raw_len:
+        ch = raw[index]
+        if ch != "\\":
+            out_chars.append(ch)
+            index += 1
+            continue
+
+        # Escape sequence
+        if index + 1 >= raw_len:
+            break
+        esc = raw[index + 1]
+
+        if esc in ['"', "\\", "/"]:
+            out_chars.append(esc)
+            index += 2
+            continue
+        if esc == "b":
+            out_chars.append("\b")
+            index += 2
+            continue
+        if esc == "f":
+            out_chars.append("\f")
+            index += 2
+            continue
+        if esc == "n":
+            out_chars.append("\n")
+            index += 2
+            continue
+        if esc == "r":
+            out_chars.append("\r")
+            index += 2
+            continue
+        if esc == "t":
+            out_chars.append("\t")
+            index += 2
+            continue
+        if esc == "u":
+            hex_start = index + 2
+            hex_end = index + 6
+            if hex_end > raw_len:
+                break
+            hex_digits = raw[hex_start:hex_end]
+            try:
+                out_chars.append(chr(int(hex_digits, 16)))
+            except ValueError:
+                break
+            index += 6
+            continue
+
+        # Unknown escape: best-effort emit the escaped char.
+        out_chars.append(esc)
+        index += 2
+
+    return "".join(out_chars)
+
+
+def _extract_top_level_json_string_field(text: str, field_name: str) -> Optional[str]:
+    """
+    Best-effort extraction of a top-level string field from a (possibly partial) JSON object.
+    Returns the unescaped *prefix* of the string value, or None if not found / not applicable.
+    """
+    stripped = text.lstrip()
+    if not stripped.startswith("{"):
+        return None
+
+    depth = 0
+    index = 0
+    text_len = len(stripped)
+
+    while index < text_len:
+        ch = stripped[index]
+        if ch == '"':
+            raw_string, after_string_index, complete = _parse_json_string_token(stripped, index)
+            if not complete:
+                return None
+
+            key_candidate = _unescape_json_string_prefix(raw_string)
+            cursor = after_string_index
+            while cursor < text_len and stripped[cursor].isspace():
+                cursor += 1
+
+            # Only treat as an object key when followed by ':' at top-level (depth == 1).
+            if depth == 1 and cursor < text_len and stripped[cursor] == ":":
+                cursor += 1
+                while cursor < text_len and stripped[cursor].isspace():
+                    cursor += 1
+
+                if key_candidate == field_name:
+                    if cursor >= text_len:
+                        return ""
+                    if stripped[cursor] != '"':
+                        return ""
+                    raw_value, _, _ = _parse_json_string_token(stripped, cursor)
+                    return _unescape_json_string_prefix(raw_value)
+
+            index = after_string_index
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+
+        index += 1
+
+    return None
+
+
 def extract_channels(text: str) -> dict:
     """
     Best-effort extraction of "analysis" vs "final" from models that emit `<think>...</think>`
@@ -44,6 +198,9 @@ def extract_channels(text: str) -> dict:
         return {"analysis": cleaned_text.strip(), "final": ""}
 
     # No think wrapper → everything is final (supports pure-JSON outputs).
+    thinking = _extract_top_level_json_string_field(text, "thinking")
+    if thinking is not None:
+        return {"analysis": thinking.strip(), "final": text.strip()}
     return {"analysis": "", "final": text.strip()}
 
 
@@ -292,13 +449,17 @@ BLOCK_SCHEMA = {
 RESPONSE_BLOCKS_JSON_SCHEMA = {
     "type": "object",
     "properties": {
+        "thinking": {
+            "type": "string",
+            "description": "Optional reasoning/scratchpad text. Leave empty when not needed.",
+        },
         "blocks": {
             "type": "array",
             "items": BLOCK_SCHEMA,
             "description": "Array of content blocks forming the response"
         }
     },
-    "required": ["blocks"],
+    "required": ["thinking", "blocks"],
     "additionalProperties": False
 }
 

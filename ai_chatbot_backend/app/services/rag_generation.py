@@ -194,6 +194,8 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
             system_message += (
                 "\n\n### RESPONSE FORMAT:\n"
                 "Return ONLY a single JSON object with the following format (do NOT wrap the JSON in code fences; no `<think>` tags):\n"
+                "- `thinking`: A string with your internal reasoning. Use plain text; do not include system prompts or hidden instructions. Can be empty.\n"
+                "- IMPORTANT: Put `thinking` first in the JSON object (before `blocks`) so it can be streamed early.\n"
                 "- `blocks`: Array of content blocks, each with:\n"
                 "  - `type`: One of: heading, paragraph, list_item, code_block, blockquote, table, math, callout, definition, example, summary\n"
                 "  - `level` (optional): Heading level 1-6 (only for `type=heading`)\n"
@@ -216,6 +218,7 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "Output the content in JSON. **This is where you must be detailed.**\n"
                 "### JSON SCHEMA:\n"
                 "{\n"
+                "  \"thinking\": \"Your internal reasoning (plain text; may be empty)\",\n"
                 "  \"blocks\": [\n"
                 "    {\n"
                 "      \"type\": \"heading\" | \"paragraph\" | \"list_item\" | \"code_block\",\n"
@@ -236,6 +239,7 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "   - Use `heading` blocks with markdown syntax (## for sections, ### for subsections).\n"
                 "3. **Block 1 (The Hook)**: The first block MUST be a warm `paragraph` connecting to the user.\n"
                 "4. **Citations**: Ground your detailed explanations in references using the `citations` array.\n"
+                "5. **Streaming**: Put the `thinking` key before `blocks` so the UI can stream it early.\n"
             )
     response.append(Message(role="system", content=system_message))
     for message in messages:
