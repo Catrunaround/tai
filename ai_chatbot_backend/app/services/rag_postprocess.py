@@ -422,19 +422,13 @@ BLOCK_SCHEMA = {
             ],
             "description": "The type of content block"
         },
-        "level": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 6,
-            "description": "Heading level (1-6). Use only when type is 'heading'."
-        },
         "language": {
             "type": "string",
             "description": "Programming language for code blocks (e.g., 'python', 'javascript'). Use only when type is 'code_block'."
         },
         "markdown_content": {
             "type": "string",
-            "description": "Rich text content in Markdown format. For headings, either include `level` (preferred) with plain text here, or include markdown hashes (e.g., '## Title'). For code blocks, either include raw code here with `language`, or include fenced Markdown."
+            "description": "Rich text content in Markdown format. For headings, include markdown hashes (e.g., '## Title') directly in markdown_content. For code blocks, either include raw code here with `language`, or include fenced Markdown."
         },
         "citations": {
             "type": "array",

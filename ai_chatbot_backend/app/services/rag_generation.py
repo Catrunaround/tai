@@ -198,9 +198,8 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "- IMPORTANT: Put `thinking` first in the JSON object (before `blocks`) so it can be streamed early.\n"
                 "- `blocks`: Array of content blocks, each with:\n"
                 "  - `type`: One of: heading, paragraph, list_item, code_block, blockquote, table, math, callout, definition, example, summary\n"
-                "  - `level` (optional): Heading level 1-6 (only for `type=heading`)\n"
                 "  - `language` (optional): Code language (only for `type=code_block`, e.g. \"python\")\n"
-                "  - `markdown_content`: Content string. Prefer: headings use plain text + `level` (no leading #); code blocks use raw code + `language` (no ``` fences).\n"
+                "  - `markdown_content`: Content string. For headings, include markdown hashes directly (e.g. \"## Section Title\"); do NOT use a separate `level` field. For code blocks, prefer raw code + `language` (no ``` fences).\n"
                 "  - `citations`: Array of references used [{\"id\": <ref_number>, \"quote_text\": \"exact text...\"}]\n\n"
 
                 "### CONTENT RULES:\n"
@@ -239,7 +238,6 @@ def format_chat_msg(messages: List[Message], json_output: bool = True, use_struc
                 "   - Use `heading` blocks with markdown syntax (## for sections, ### for subsections).\n"
                 "3. **Block 1 (The Hook)**: The first block MUST be a warm `paragraph` connecting to the user.\n"
                 "4. **Citations**: Ground your detailed explanations in references using the `citations` array.\n"
-                "5. **Streaming**: Put the `thinking` key before `blocks` so the UI can stream it early.\n"
             )
     response.append(Message(role="system", content=system_message))
     for message in messages:
