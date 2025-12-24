@@ -408,8 +408,8 @@ BLOCK_SCHEMA = {
         "type": {
             "type": "string",
             "enum": [
-                "heading",           # Section headers with markdown hashes (e.g., "## Title")
                 "paragraph",         # Standard text paragraphs
+                "heading",           # Section headers with markdown hashes (e.g., "## Title")
                 "list_item",         # Bullet or numbered list items
                 "code_block",        # Code snippets with syntax highlighting
                 "blockquote",        # Quoted content
