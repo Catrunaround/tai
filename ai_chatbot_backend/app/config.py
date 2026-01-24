@@ -19,6 +19,7 @@ class LLMModeEnum(str, Enum):
     local = "local"
     remote = "remote"
     mock = "mock"
+    openai = "openai"
 
 
 class Settings(BaseSettings):
@@ -36,6 +37,18 @@ class Settings(BaseSettings):
         alias="LLM_MODE"
     )
     remote_model_url: str = Field(description="URL for remote model API")
+
+    # OpenAI Configuration (for llm_mode=openai)
+    openai_api_key: Optional[str] = Field(
+        default=None,
+        description="OpenAI API key for OpenAI mode",
+        alias="OPENAI_API_KEY"
+    )
+    openai_model: str = Field(
+        default="gpt-4o",
+        description="OpenAI model to use (e.g., gpt-4o, gpt-4o-mini)",
+        alias="OPENAI_MODEL"
+    )
 
     admin_token: str = Field(
         description="Admin token required for course management endpoints. Must be set in .env file."

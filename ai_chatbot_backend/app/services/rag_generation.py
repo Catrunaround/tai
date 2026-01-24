@@ -4,6 +4,7 @@ import re
 import ast
 import time
 from typing import Any, Optional, Tuple, List, Union
+from dataclasses import dataclass
 # Third-party libraries
 from transformers import AutoTokenizer
 from vllm import SamplingParams
@@ -133,7 +134,7 @@ async def generate_chat_response(
         iterator = _generate_streaming_response(messages, engine, sampling_params=sampling_params)
         return iterator, reference_list
     else:
-        # For remote engines, pass the structured JSON format if enabled
+        # For remote engines (RemoteModelClient, OpenAIModelClient), pass structured JSON format if enabled
         response_format = RESPONSE_BLOCKS_OPENAI_FORMAT if (json_output and use_structured_json) else None
         # Remote path: do NOT send chat history; only send system + the final user prompt.
         remote_messages = [
@@ -147,6 +148,9 @@ async def generate_chat_response(
             course=course,
             response_format=response_format,
         )
+        # Wrap OpenAI streaming response to match vLLM output format
+        if stream and _is_openai_engine(engine):
+            response = _wrap_openai_stream_as_vllm(response)
         return response, reference_list
 
 
@@ -155,6 +159,47 @@ def _is_local_engine(engine: Any) -> bool:
     Check if the engine is a local instance by verifying if it has an 'is_running' attribute.
     """
     return hasattr(engine, "is_running") and engine.is_running
+
+
+def _is_openai_engine(engine: Any) -> bool:
+    """
+    Check if the engine is an OpenAI client.
+    """
+    return hasattr(engine, '__class__') and 'OpenAI' in engine.__class__.__name__
+
+
+@dataclass
+class MockVLLMOutput:
+    """Mock output structure to match vLLM format for OpenAI responses."""
+    text: str
+
+
+@dataclass
+class MockVLLMChunk:
+    """Mock chunk structure to match vLLM format for OpenAI responses."""
+    outputs: List[MockVLLMOutput]
+
+
+async def _wrap_openai_stream_as_vllm(openai_stream):
+    """
+    Wrap OpenAI streaming response to match vLLM output format.
+
+    vLLM yields: output.outputs[0].text (cumulative text)
+    OpenAI yields: NDJSON strings with incremental tokens
+
+    This wrapper accumulates tokens and yields vLLM-compatible chunks.
+    """
+    accumulated_text = ""
+    for line in openai_stream:
+        if not line or not line.strip():
+            continue
+        try:
+            data = json.loads(line)
+            if data.get("type") == "token":
+                accumulated_text += data.get("data", "")
+                yield MockVLLMChunk(outputs=[MockVLLMOutput(text=accumulated_text)])
+        except json.JSONDecodeError:
+            continue
 
 
 def _generate_streaming_response(
