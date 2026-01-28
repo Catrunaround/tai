@@ -76,7 +76,7 @@ async def chat_stream_parser(
             chunk = chunks[channel]
             if not chunk.strip():
                 continue
-            if PARTIAL_TAIL_GUARD.search(channels[channel][-100:]):
+            if channel == "final" and PARTIAL_TAIL_GUARD.search(channels[channel][-100:]):
                 # if PARTIAL_TAIL_GUARD.search(channels[channel][-50:]):
                 #     print("[DEBUG] Skipping partial reference chunk:" + repr(channels[channel][-50:]))
                 continue_flag = True

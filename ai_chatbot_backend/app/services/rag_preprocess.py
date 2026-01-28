@@ -131,28 +131,29 @@ def build_augmented_prompt(
     # Create response and reference styles based on audio mode and json_output flag.
     if not audio_response:
         if json_output:
-            # JSON output format with enhanced instructions
             response_style = (
-                "\n### CONTENT STRATEGY (Bloom's Taxonomy):\n"
-                "1. **Analyze Intent**: Determine if the user needs to Understand, Apply, or Create.\n"
-                "2. **Socratic Execution**: \n"
-                "   - If explaining concepts: Use analogies and clear examples.\n"
-                "   - If solving problems: Provide hints and steps, NEVER the final answer immediately.\n"
-                "3. **Refusal**: If references are missing/irrelevant, politely state no data is found.\n"
+                "\nResponse style: Write in natural paragraphs (clear separation between ideas). "
+                "Do not force a fixed template or heavy headings. "
+                "Do not add a generic title/heading (e.g., \"Answer\", \"Overview\") unless the user asked for it or it clearly improves clarity. "
+                "Avoid the pattern of a single heading followed by a single paragraph; if the response is short, just write a single paragraph. "
+                "Match the user's language by default, and adjust depth to the user's intent: "
+                "concise for simple asks, more detailed for complex ones or when the user requests it. "
+                "Use headings or lists only when they genuinely improve clarity (e.g., steps, checklists, comparisons). "
+                "When the user is solving a problem, guide with hints and questions before giving a final answer."
             )
 
             reference_style = (
-                "\n### REFERENCE EVIDENCE RULES:\n"
-                "1. **Evidence Extraction**: For every fact you state, find the EXACT sentence in the provided References.\n"
-                "2. **Fill the Schema**: Copy that sentence into the `quote_text` field of the `citations` object in your JSON.\n"
-                "3. **Clean Text**: Keep the `markdown_content` clean of citation numbers.\n"
+                "\nReference evidence rules: Ground concrete claims in the provided References. "
+                "When a block relies on a reference, copy the exact supporting sentence into "
+                "`citations[].quote_text`. Keep `markdown_content` clean (no inline citation markers)."
             )
         else:
             # Original markdown format
             response_style = (
-                f"Answer the instruction thoroughly with a well-structured markdown format answer (do not add '```markdown'). "
-                f"Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
-                f"No references at the end."
+                "Answer in clear Markdown using natural paragraphs (do not add '```markdown'). "
+                "Use headings or lists only when they genuinely improve readability. "
+                "When relevant, briefly mention what the reference is (e.g., textbook/notes) and what it's about. "
+                "Quote the reference if needed. Do not list references at the end."
             )
             # "[Reference: a; Quote: 'xxx to xxx']"
             reference_style = (
@@ -176,44 +177,41 @@ def build_augmented_prompt(
     if not insert_document or n == 0:
         print("[INFO] No relevant documents found above the similarity threshold.")
         system_add_message = (
-            f"\n{response_style}"
-            f"If the question is a complex question, provide hints, explanations, "
-            f"or step-by-step guidance instead of a direct answer. "
-            f"If you are unsure after making a reasonable effort, "
-            f"explain that there is no data in the knowledge base for the response. "
-            f"Only refuse if the question is clearly unrelated to any topic in "
-            f"{course}: {class_name} and is not a general, reasonable query. "
-            f"If the intent is unclear, ask clarifying questions rather than refusing."
+            f"\n{response_style}\n\n"
+            "If the question is complex, provide hints, explanations, or step-by-step guidance instead of a direct final answer.\n\n"
+            "If you are unsure after making a reasonable effort, explain that there is no relevant data in the knowledge base.\n\n"
+            f"Refuse only if the question is clearly unrelated to any topic in {course}: {class_name} and is not a general, reasonable query.\n\n"
+            "If the intent is unclear, ask clarifying questions rather than refusing."
         )
         modified_message = (
             f""
         )
     else:
         print("[INFO] Relevant documents found and inserted into the prompt.")
+        # TODO
+        #tutor mode
+        # TODO
+        # first citation then answer, only one id and then use citiation to answer
+        # TODO
+        # talk like a tutor pretend to open the citation highlight the quote_text to give the explanation with markdown content
         system_add_message = (
-            f"\n{response_style}"
-            f"Review the reference documents, considering their Directory Path (original file location), "
-            f"Topic Path (section or title it belongs to), and Document content. "
-            f"Select only the most relevant references to answer the instruction thoroughly. "
-            f"Role: adaptive and encouraging tutor using Bloom taxonomy and provided references, don't give out answer."
-            f"always praise curiosity + link to prior knowledge; explain only core ideas from refs with one"
-            f"Quickly identify goal = Understand / Apply–Analyze / Evaluate–Create."
-            f"If Understand → explanation + clear example; headlines and keep concise and clear"
-            f"then ask if the user wants more explanation, such as analogies, counterexamples, or deep exploration \n\n"
-            f"If Apply–Analyze → clarify what’s asked, what concepts and prereqs are involved; ask if they want hints "
-            f"or steps; wait for attempt; then outline step-by-step guidance using refs, no final answer.\n\n"
-            f"If Evaluate–Create → unpack the problem and key concepts; ask for their approach first; then guide "
-            f"reflection with criteria (correctness, completeness, trade-offs); compare views, note assumptions, "
-            f"outline structure if needed, never a full solution.\n\n"
-            f"always ground reasoning in the references and note how each supports the step."
-            f"Prefer hints and reflection; end each turn by inviting the next action."
-            f"{reference_style}"
-            f"Exclude and avoid explaining irrelevant references. "
-            f"If, after reasonable effort, no relevant information is found, "
-            f"state that there is no data in the knowledge base for the response. "
-            f"Refuse only if the question is clearly unrelated to any topic in {course}: {class_name}, "
-            f"is not a general query, and has no link to the provided references. "
-            f"If intent is unclear, ask clarifying questions before refusing."
+            f"\n{response_style}\n\n"
+            "Review the reference documents, considering their Directory Path (original file location), "
+            "Topic Path (section/title), and the chunk content. Select only the most relevant references.\n\n"
+            "Role: You are an adaptive, encouraging tutor using Bloom taxonomy and the provided references. "
+            "Praise curiosity, link to prior knowledge, and keep explanations focused on core ideas from the references.\n\n"
+            "Quickly identify the user's goal (Understand / Apply–Analyze / Evaluate–Create) and respond accordingly. "
+            "If the goal is Understand, explain the key idea clearly and give a simple example, then ask if they want deeper exploration. "
+            "If the goal is Apply–Analyze, clarify what's being asked and what prerequisites are involved, offer hints or a plan, wait for an attempt, "
+            "then guide step-by-step using the references (do not give the final answer immediately). "
+            "If the goal is Evaluate–Create, ask for their approach first, then guide reflection with criteria (correctness, completeness, trade-offs), "
+            "note assumptions, and suggest a structure (do not provide a full solution).\n\n"
+            "Always ground reasoning in the references and briefly note how each reference supports the step. "
+            "Prefer hints and reflection, and end each turn by inviting the user's next action."
+            f"{reference_style}\n\n"
+            "Exclude irrelevant references. If, after reasonable effort, no relevant information is found, state that there is no data in the knowledge base.\n\n"
+            f"Refuse only if the question is clearly unrelated to any topic in {course}: {class_name}, is not a general query, and has no link to the provided references.\n\n"
+            "If intent is unclear, ask clarifying questions before refusing."
         )
         modified_message = (
             f"{insert_document}\n---\n"

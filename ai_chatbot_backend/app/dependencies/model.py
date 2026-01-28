@@ -1,5 +1,6 @@
 import json
 from app.dependencies.remote_model import RemoteModelClient
+from app.dependencies.openai_model import OpenAIModelClient
 from app.config import settings
 from vllm import AsyncLLMEngine, AsyncEngineArgs
 from faster_whisper import WhisperModel
@@ -44,6 +45,18 @@ def get_remote_model_pipeline():
     Tokenization is performed locally to maintain a consistent interface.
     """
     return RemoteModelClient(url=settings.remote_model_url)
+
+
+def get_openai_model_pipeline():
+    """Returns an OpenAI API client for inference.
+
+    Uses OpenAI's native structured output support for guaranteed valid JSON.
+    Requires OPENAI_API_KEY and optionally OPENAI_MODEL in environment.
+    """
+    return OpenAIModelClient(
+        api_key=settings.openai_api_key,
+        model=settings.openai_model
+    )
 
 
 def get_mock_model_pipeline():
@@ -109,6 +122,13 @@ def initialize_model_engine():
         print("🌐 Setting up remote model pipeline...")
         _model_engine = get_remote_model_pipeline()
         print("✅ Remote model pipeline setup successfully!")
+    elif mode == "openai":
+        print("🌐 Setting up OpenAI model pipeline...")
+        _model_engine = get_openai_model_pipeline()
+        print(f"✅ OpenAI model pipeline setup successfully! (model: {settings.openai_model})")
+        print("📚 Loading local embedding engine for RAG...")
+        _embedding_engine = get_local_embedding_engine()
+        print("✅ Local embedding engine loaded successfully!")
     elif mode == "mock":
         print("🎭 Setting up mock model pipeline...")
         _model_engine = get_mock_model_pipeline()
@@ -128,7 +148,7 @@ def get_model_engine():
     global _model_engine
     if _model_engine is None:
         print("⚠️  Model pipeline not initialized, initializing now...")
-        _model_engine, _ = initialize_model_engine()
+        initialize_model_engine()
     return _model_engine
 
 def get_whisper_engine():
@@ -136,7 +156,7 @@ def get_whisper_engine():
     global _whisper_engine
     if _whisper_engine is None:
         print("⚠️  Whisper model engine not initialized, initializing now...")
-        _, _whisper_engine = initialize_model_engine()
+        initialize_model_engine()
     return _whisper_engine
 
 def get_embedding_engine():
@@ -144,5 +164,5 @@ def get_embedding_engine():
     global _embedding_engine
     if _embedding_engine is None:
         print("⚠️  Embedding engine not initialized, initializing now...")
-        _, _, _embedding_engine = initialize_model_engine()
+        initialize_model_engine()
     return _embedding_engine

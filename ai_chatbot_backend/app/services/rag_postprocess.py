@@ -10,6 +10,160 @@ from vllm.sampling_params import GuidedDecodingParams
 from app.core.models.chat_completion import Message
 import re
 
+
+def _parse_json_string_token(text: str, quote_index: int) -> tuple[str, int, bool]:
+    """
+    Parse a JSON string token starting at the opening `"` at `quote_index`.
+
+    Returns:
+        raw_contents: The raw (still-escaped) contents between quotes.
+        next_index: Index immediately after the closing quote (or end-of-text if incomplete).
+        complete: True if a closing quote was found, else False (streaming/incomplete JSON).
+    """
+    raw_chars: list[str] = []
+    index = quote_index + 1
+    escape_next = False
+    text_len = len(text)
+    while index < text_len:
+        ch = text[index]
+        if escape_next:
+            raw_chars.append(ch)
+            escape_next = False
+            index += 1
+            continue
+        if ch == "\\":
+            raw_chars.append(ch)
+            escape_next = True
+            index += 1
+            continue
+        if ch == '"':
+            return "".join(raw_chars), index + 1, True
+        raw_chars.append(ch)
+        index += 1
+    return "".join(raw_chars), index, False
+
+
+def _unescape_json_string_prefix(raw: str) -> str:
+    """
+    Best-effort unescape of a *prefix* of JSON string contents.
+
+    This is streaming-friendly: it only decodes escape sequences that are complete in `raw`
+    and ignores any trailing incomplete escape sequence.
+    """
+    if not raw:
+        return ""
+
+    out_chars: list[str] = []
+    index = 0
+    raw_len = len(raw)
+    while index < raw_len:
+        ch = raw[index]
+        if ch != "\\":
+            out_chars.append(ch)
+            index += 1
+            continue
+
+        # Escape sequence
+        if index + 1 >= raw_len:
+            break
+        esc = raw[index + 1]
+
+        if esc in ['"', "\\", "/"]:
+            out_chars.append(esc)
+            index += 2
+            continue
+        if esc == "b":
+            out_chars.append("\b")
+            index += 2
+            continue
+        if esc == "f":
+            out_chars.append("\f")
+            index += 2
+            continue
+        if esc == "n":
+            out_chars.append("\n")
+            index += 2
+            continue
+        if esc == "r":
+            out_chars.append("\r")
+            index += 2
+            continue
+        if esc == "t":
+            out_chars.append("\t")
+            index += 2
+            continue
+        if esc == "u":
+            hex_start = index + 2
+            hex_end = index + 6
+            if hex_end > raw_len:
+                break
+            hex_digits = raw[hex_start:hex_end]
+            try:
+                out_chars.append(chr(int(hex_digits, 16)))
+            except ValueError:
+                break
+            index += 6
+            continue
+
+        # Unknown escape: best-effort emit the escaped char.
+        out_chars.append(esc)
+        index += 2
+
+    return "".join(out_chars)
+
+
+def _extract_top_level_json_string_field(text: str, field_name: str) -> Optional[str]:
+    """
+    Best-effort extraction of a top-level string field from a (possibly partial) JSON object.
+    Returns the unescaped *prefix* of the string value, or None if not found / not applicable.
+    """
+    stripped = text.lstrip()
+    if not stripped.startswith("{"):
+        return None
+
+    depth = 0
+    index = 0
+    text_len = len(stripped)
+
+    while index < text_len:
+        ch = stripped[index]
+        if ch == '"':
+            raw_string, after_string_index, complete = _parse_json_string_token(stripped, index)
+            if not complete:
+                return None
+
+            key_candidate = _unescape_json_string_prefix(raw_string)
+            cursor = after_string_index
+            while cursor < text_len and stripped[cursor].isspace():
+                cursor += 1
+
+            # Only treat as an object key when followed by ':' at top-level (depth == 1).
+            if depth == 1 and cursor < text_len and stripped[cursor] == ":":
+                cursor += 1
+                while cursor < text_len and stripped[cursor].isspace():
+                    cursor += 1
+
+                if key_candidate == field_name:
+                    if cursor >= text_len:
+                        return ""
+                    if stripped[cursor] != '"':
+                        return ""
+                    raw_value, _, _ = _parse_json_string_token(stripped, cursor)
+                    return _unescape_json_string_prefix(raw_value)
+
+            index = after_string_index
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+
+        index += 1
+
+    return None
+
+
 def extract_channels(text: str) -> dict:
     """
     Best-effort extraction of "analysis" vs "final" from models that emit `<think>...</think>`
@@ -44,6 +198,9 @@ def extract_channels(text: str) -> dict:
         return {"analysis": cleaned_text.strip(), "final": ""}
 
     # No think wrapper → everything is final (supports pure-JSON outputs).
+    thinking = _extract_top_level_json_string_field(text, "thinking")
+    if thinking is not None:
+        return {"analysis": thinking.strip(), "final": text.strip()}
     return {"analysis": "", "final": text.strip()}
 
 
@@ -251,8 +408,8 @@ BLOCK_SCHEMA = {
         "type": {
             "type": "string",
             "enum": [
-                "heading",           # Section headers with markdown hashes (e.g., "## Title")
                 "paragraph",         # Standard text paragraphs
+                "heading",           # Section headers with markdown hashes (e.g., "## Title")
                 "list_item",         # Bullet or numbered list items
                 "code_block",        # Code snippets with syntax highlighting
                 "blockquote",        # Quoted content
@@ -265,27 +422,21 @@ BLOCK_SCHEMA = {
             ],
             "description": "The type of content block"
         },
-        "level": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 6,
-            "description": "Heading level (1-6). Use only when type is 'heading'."
-        },
         "language": {
-            "type": "string",
-            "description": "Programming language for code blocks (e.g., 'python', 'javascript'). Use only when type is 'code_block'."
-        },
-        "markdown_content": {
-            "type": "string",
-            "description": "Rich text content in Markdown format. For headings, either include `level` (preferred) with plain text here, or include markdown hashes (e.g., '## Title'). For code blocks, either include raw code here with `language`, or include fenced Markdown."
+            "type": ["string", "null"],
+            "description": "Programming language for code blocks (e.g., 'python', 'javascript'). Set to null for non-code blocks."
         },
         "citations": {
             "type": "array",
             "items": CITATION_SCHEMA,
-            "description": "Citations referencing the provided context"
+            "description": "Citations referencing the provided context. All citations in a block must be from the same source file."
+        },
+        "markdown_content": {
+            "type": "string",
+            "description": "Rich text content in Markdown format based on the citations above. For headings, include markdown hashes (e.g., '## Title') directly in markdown_content. For code blocks, either include raw code here with `language`, or include fenced Markdown."
         }
     },
-    "required": ["type", "markdown_content", "citations"],
+    "required": ["type", "language", "citations", "markdown_content"],
     "additionalProperties": False
 }
 
@@ -294,7 +445,8 @@ RESPONSE_BLOCKS_JSON_SCHEMA = {
     "properties": {
         "thinking": {
             "type": "string",
-            "description": "Step-by-step reasoning explaining how the answer was derived from the references"
+
+            "description": "Optional reasoning/scratchpad text. Leave empty when not needed.",
         },
         "blocks": {
             "type": "array",
