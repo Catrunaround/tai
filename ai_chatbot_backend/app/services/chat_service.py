@@ -98,8 +98,6 @@ async def chat_stream_parser(
                 break
             # For json_output, extract only answer text from 'final' channel, hiding references
             if json_output and channel == 'final':
-                # For debug
-                # current_answer_text = channels['final']
                 current_answer_text = extract_answers(channels['final'])
                 chunk = current_answer_text[len(previous_answer_text):]
                 previous_answer_text = current_answer_text
@@ -111,7 +109,8 @@ async def chat_stream_parser(
                 first_token_marked = True
             yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk));
             text_seq += 1
-            print(chunk, end="")
+            ####### print the plain text output for debugging ########
+            # print(chunk, end="")
         if continue_flag:
             continue
         previous_channels = channels
@@ -196,6 +195,11 @@ async def chat_stream_parser(
                                 }
                             ],
                         })
+
+    ####### Print the complete original JSON for debugging ######
+    if json_output and 'final' in channels:
+        print("[DEBUG] Complete Original JSON Output:")
+        print(channels['final'])
 
     # # convert token ids to text
     # print("\n[INFO] Full response text:")

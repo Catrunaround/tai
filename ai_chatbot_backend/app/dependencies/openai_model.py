@@ -160,6 +160,7 @@ class OpenAIModelClient:
                     "type": "token",
                     "data": token
                 }) + "\n"
+        ########## print full response ##########
         print("\n[OpenAI Stream] Complete. Full response:")
         print(accumulated)
         print("[OpenAI Stream] End of response\n")
