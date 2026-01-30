@@ -1,4 +1,5 @@
 # Consolidated completions router
+import time
 from typing import List
 from app.api.deps import verify_api_token
 from app.core.models.chat_completion import (
@@ -17,6 +18,7 @@ from app.services.rag_generation import (
     format_chat_msg,
     generate_chat_response
 )
+from app.services.request_timer import RequestTimer
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -57,6 +59,10 @@ async def create_completion(
         db: Session = Depends(get_metadata_db),
         _: bool = Depends(verify_api_token)
 ):
+    # Create timer for tracking request latency
+    timer = RequestTimer(request_id=str(time.time_ns()))
+    timer.mark("request_received")
+
     # Get the pre-initialized pipeline
     llm_engine = get_model_engine()
     audio_text = None
@@ -91,7 +97,7 @@ async def create_completion(
     elif isinstance(params, PracticeCompletionParams):
         problem_content = _get_problem_content(params, db)
 
-    response, reference_list = await generate_chat_response(
+    response, reference_list, timer = await generate_chat_response(
         params.messages,
         user_focus=getattr(params, 'user_focus', None),
         answer_content=getattr(params, 'answer_content', None),
@@ -101,7 +107,9 @@ async def create_completion(
         engine=llm_engine,
         audio_response=params.audio_response,
         sid=sid,
-        json_output=params.json_output
+        tutor_mode=params.tutor_mode,
+        json_output=params.json_output,
+        timer=timer
     )
 
     if params.stream:
@@ -111,11 +119,16 @@ async def create_completion(
                 reference_list,
                 params.audio_response,
                 audio_text=audio_text,
-                messages=format_chat_msg(params.messages, json_output=params.json_output),
+                messages=format_chat_msg(
+                    params.messages,
+                    tutor_mode=params.tutor_mode,
+                    audio_response=params.audio_response
+                ),
                 engine=llm_engine,
                 old_sid=sid,
                 course_code=params.course_code,
-                json_output=params.json_output
+                tutor_mode=params.tutor_mode,
+                timer=timer
             ),
             media_type="text/event-stream"
         )

@@ -8,6 +8,7 @@ from vllm import SamplingParams
 from vllm.sampling_params import GuidedDecodingParams
 # Local libraries
 from app.core.models.chat_completion import Message
+from app.prompts import memory as memory_prompts
 import re
 
 
@@ -205,7 +206,7 @@ def extract_channels(text: str) -> dict:
 
 
 
-def extract_answers(text: str, include_thinking: bool = False) -> str:
+def extract_answers(text: str, include_thinking: bool = False, include_unreadable: bool = True) -> str:
     """
     Extract markdown_content from JSON blocks structure with smooth streaming support.
     Handles both complete and partial JSON blocks to enable word-by-word streaming.
@@ -218,11 +219,20 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
          ]
        }
 
-    2. (Legacy) Structured format with an optional `thinking` field.
+    2. Voice tutor format with unreadable field:
+       {
+         "blocks": [
+           {"type": "...", "markdown_content": "...", "unreadable": "...", "citations": [...]},
+           ...
+         ]
+       }
+
+    3. (Legacy) Structured format with an optional `thinking` field.
 
     Args:
         text: The JSON text to parse
         include_thinking: If True, prepend thinking content (for debugging/display)
+        include_unreadable: If True, append unreadable content after markdown_content (for visual display)
     Returns: Concatenated markdown_content from all blocks (including partial content)
     """
     if not text.strip():
@@ -244,7 +254,7 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
                 markdown_parts = []
                 for block in data.get("blocks", []):
                     if isinstance(block, dict):
-                        content = _render_block_markdown(block)
+                        content = _render_block_markdown(block, include_unreadable=include_unreadable)
                         if content:
                             markdown_parts.append(content)
                 result_parts.append(_join_markdown_blocks(markdown_parts))
@@ -288,7 +298,7 @@ def extract_answers(text: str, include_thinking: bool = False) -> str:
     return _join_markdown_blocks(markdown_parts)
 
 
-def _render_block_markdown(block: dict) -> str:
+def _render_block_markdown(block: dict, include_unreadable: bool = True) -> str:
     block_type = block.get("type")
     if not isinstance(block_type, str):
         block_type = ""
@@ -296,36 +306,66 @@ def _render_block_markdown(block: dict) -> str:
 
     content = block.get("markdown_content", "")
     if not isinstance(content, str):
-        return ""
+        content = ""
 
     # Preserve internal newlines; just trim outer whitespace.
     stripped = content.strip()
-    if not stripped:
-        return ""
 
+    # Handle unreadable content (voice tutor mode)
+    unreadable = block.get("unreadable", None)
+    unreadable_content = ""
+    if include_unreadable and unreadable and isinstance(unreadable, str):
+        unreadable_stripped = unreadable.strip()
+        if unreadable_stripped:
+            # Render unreadable content based on block type
+            if block_type == "code_block":
+                language = block.get("language")
+                lang = language.strip() if isinstance(language, str) else ""
+                fence = f"```{lang}".rstrip()
+                unreadable_content = f"\n{fence}\n{unreadable_stripped}\n```"
+            elif block_type == "math":
+                unreadable_content = f"\n$$\n{unreadable_stripped}\n$$"
+            else:
+                # For other types, render as code block if it looks like code
+                unreadable_content = f"\n```\n{unreadable_stripped}\n```"
+
+    # If no speakable content but has unreadable, return just unreadable
+    if not stripped:
+        return unreadable_content.lstrip("\n") if unreadable_content else ""
+
+    result = ""
     if block_type == "heading":
         # Backcompat: allow markdown headings already containing hashes.
         if stripped.startswith("#"):
-            return stripped
-        level = block.get("level")
-        if isinstance(level, int) and 1 <= level <= 6:
-            prefix = "#" * level
+            result = stripped
         else:
-            # Default to level 2 to match prior "## Title" guidance.
-            prefix = "##"
-        return f"{prefix} {stripped}"
+            level = block.get("level")
+            if isinstance(level, int) and 1 <= level <= 6:
+                prefix = "#" * level
+            else:
+                # Default to level 2 to match prior "## Title" guidance.
+                prefix = "##"
+            result = f"{prefix} {stripped}"
 
-    if block_type == "code_block":
+    elif block_type == "code_block":
         # Backcompat: allow fenced Markdown already containing ``` fences.
         if stripped.lstrip().startswith("```"):
-            return stripped
-        language = block.get("language")
-        lang = language.strip() if isinstance(language, str) else ""
-        fence = f"```{lang}".rstrip()
-        code = content.rstrip("\n")
-        return f"{fence}\n{code}\n```"
+            result = stripped
+        else:
+            language = block.get("language")
+            lang = language.strip() if isinstance(language, str) else ""
+            fence = f"```{lang}".rstrip()
+            code = content.rstrip("\n")
+            result = f"{fence}\n{code}\n```"
 
-    return stripped
+    else:
+        result = stripped
+
+    # Append unreadable content if present
+    if unreadable_content:
+        result = result + unreadable_content
+
+    return result
 
 
 def _join_markdown_blocks(parts: list[str]) -> str:
@@ -471,6 +511,84 @@ RESPONSE_BLOCKS_OPENAI_FORMAT = {
 # VLLM GuidedDecodingParams for structured response blocks
 GUIDED_RESPONSE_BLOCKS = GuidedDecodingParams(json=RESPONSE_BLOCKS_JSON_SCHEMA)
 
+# ========================
+# Voice Tutor JSON Schema (with unreadable property)
+# ========================
+# This schema extends the standard blocks schema with an `unreadable` field
+# for content that should be shown visually but not spoken aloud.
+
+VOICE_TUTOR_BLOCK_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "type": {
+            "type": "string",
+            "enum": [
+                "paragraph",
+                "heading",
+                "list_item",
+                "code_block",
+                "blockquote",
+                "table",
+                "math",
+                "callout",
+                "definition",
+                "example",
+                "summary",
+            ],
+            "description": "The type of content block"
+        },
+        "language": {
+            "type": ["string", "null"],
+            "description": "Programming language for code blocks (e.g., 'python'). Set to null for non-code blocks."
+        },
+        "citations": {
+            "type": "array",
+            "items": CITATION_SCHEMA,
+            "description": "Citations referencing the provided context."
+        },
+        "markdown_content": {
+            "type": "string",
+            "description": "SPEAKABLE content only. Write text that can be read aloud naturally by text-to-speech."
+        },
+        "unreadable": {
+            "type": ["string", "null"],
+            "description": "Content that CANNOT be spoken aloud (code, formulas, tables). Shown visually but NOT read by TTS. Set to null if all content is speakable."
+        }
+    },
+    "required": ["type", "language", "citations", "markdown_content", "unreadable"],
+    "additionalProperties": False
+}
+
+VOICE_TUTOR_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "thinking": {
+            "type": "string",
+            "description": "Optional reasoning/scratchpad text. Leave empty when not needed.",
+        },
+        "blocks": {
+            "type": "array",
+            "items": VOICE_TUTOR_BLOCK_SCHEMA,
+            "description": "Array of content blocks forming the response"
+        }
+    },
+    "required": ["thinking", "blocks"],
+    "additionalProperties": False
+}
+
+# OpenAI response_format compatible schema for voice tutor mode
+VOICE_TUTOR_OPENAI_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "voice_tutor_response_blocks",
+        "strict": True,
+        "schema": VOICE_TUTOR_RESPONSE_SCHEMA
+    }
+}
+
+# VLLM GuidedDecodingParams for voice tutor structured output
+GUIDED_VOICE_TUTOR_BLOCKS = GuidedDecodingParams(json=VOICE_TUTOR_RESPONSE_SCHEMA)
+
 
 @dataclass
 class MemorySynopsis:
@@ -536,36 +654,9 @@ async def build_memory_synopsis(
     return cur
 
 
-_LLM_SYSTEM = (
-    "You are a memory-synopsis compressor. "
-    "Given a chat transcript, produce a STRUCTURED JSON with keys: "
-    "focus (string), user_goals (list[str]), constraints (list[str]), key_entities (list[str]), "
-    "artifacts (list[str]), open_questions (list[str]), action_items (list[str]), decisions (list[str]). "
-    "\nHere's some description of each key: \n"
-    "focus - what is the main topic / intent of the user? \n"
-    "user_goals - user's explicit goals/preferences. \n"
-    "constraints - hard constraints (versions, dates, scope, etc.). \n"
-    "key_entities - people, products, datasets, repos, courses… \n"
-    "artifacts - files, URLs, IDs, paths mentioned. \n"
-    "open_questions - unresolved questions the user asked. \n"
-    "action_items - TODOs, “next steps”. \n"
-    "decisions - agreed choices so far. \n"
-    "\nRules:\n"
-    "- Return ONLY a single JSON object that matches the schema keys and types above.\n"
-    "- Keep text terse and factual. No markdown, no code fences, no extra commentary.\n"
-    "- Arrays must contain strings only; deduplicate items; remove empty strings.\n"
-    "- Extract explicit constraints (versions, dates, scope limits) as strings.\n"
-)
-
-_LLM_USER_TEMPLATE = """Transcript:
-{transcript}
-
-Requirements:
-- Summarize tersely.
-- Deduplicate entities and URLs/paths.
-- Extract explicit constraints (versions, dates, scope limits).
-Return ONLY JSON.
-"""
+# Memory synopsis prompts - now imported from app.prompts.memory
+_LLM_SYSTEM = str(memory_prompts.SYNOPSIS_SYSTEM)
+_LLM_USER_TEMPLATE = memory_prompts.SYNOPSIS_USER_TEMPLATE
 
 
 async def _llm_synopsis_from_transcript(
@@ -646,29 +737,9 @@ def _truncate_sentence(s: str, max_chars: int) -> str:
     return s if len(s) <= max_chars else s[:max_chars - 1] + "…"
 
 
-_LLM_MERGE_SYSTEM = (
-    "You merge two conversation memory synopses into ONE, preserving correctness and recency.\n"
-    "Output ONLY a JSON object with exactly these keys and types:\n"
-    "focus (string), user_goals (list[str]), constraints (list[str]), key_entities (list[str]),\n"
-    "artifacts (list[str]), open_questions (list[str]), action_items (list[str]), decisions (list[str]).\n"
-    "Rules:\n"
-    "- Prefer NEW facts if they add specificity, dates/versions/IDs, or fix errors.\n"
-    "- Keep stable facts from OLD if NEW is generic or contradictory.\n"
-    "- Deduplicate items; remove empties; keep terse phrasing.\n"
-    "- Enforce keeping the most specific and recent at the front of lists.\n"
-    "- Do NOT invent facts that are not present in OLD or NEW.\n"
-    "- Return ONLY JSON. No markdown, no commentary."
-)
-
-_LLM_MERGE_USER_TEMPLATE = """OLD_SYNOPSIS:
-{old_json}
-
-NEW_SYNOPSIS:
-{new_json}
-
-Task:
-Produce the single best merged synopsis following the rules. Return ONLY JSON.
-"""
+# Memory merge prompts - now imported from app.prompts.memory
+_LLM_MERGE_SYSTEM = str(memory_prompts.MERGE_SYSTEM)
+_LLM_MERGE_USER_TEMPLATE = memory_prompts.MERGE_USER_TEMPLATE
 
 
 async def _llm_merge_synopses(

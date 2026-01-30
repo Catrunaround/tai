@@ -11,7 +11,13 @@ from vllm import SamplingParams
 # Local libraries
 from app.core.models.chat_completion import Message, UserFocus
 from app.services.rag_preprocess import build_retrieval_query, build_augmented_prompt, build_file_augmented_context
-from app.services.rag_postprocess import GUIDED_RESPONSE_BLOCKS, RESPONSE_BLOCKS_OPENAI_FORMAT
+from app.services.rag_postprocess import (
+    GUIDED_RESPONSE_BLOCKS, RESPONSE_BLOCKS_OPENAI_FORMAT,
+    GUIDED_VOICE_TUTOR_BLOCKS, VOICE_TUTOR_OPENAI_FORMAT
+)
+from app.services.request_timer import RequestTimer
+from app.prompts import shared, chat, voice
+from app.prompts.base import compose
 # Environment Variables
 # TOKENIZER_MODEL_ID = "THUDM/GLM-4-9B-0414"
 from app.dependencies.model import LLM_MODEL_ID
@@ -30,6 +36,12 @@ SAMPLING = SamplingParams(
 SAMPLING_STRUCTURED = SamplingParams(
     temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000,
     guided_decoding=GUIDED_RESPONSE_BLOCKS,
+    bad_words=NO_THINK_BAD_WORDS
+)
+# Sampling params for voice tutor mode (JSON with unreadable field)
+SAMPLING_VOICE_TUTOR = SamplingParams(
+    temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000,
+    guided_decoding=GUIDED_VOICE_TUTOR_BLOCKS,
     bad_words=NO_THINK_BAD_WORDS
 )
 TOKENIZER = AutoTokenizer.from_pretrained(LLM_MODEL_ID)
@@ -54,22 +66,44 @@ async def generate_chat_response(
         engine: Any = None,
         audio_response: bool = False,
         sid: Optional[str] = None,
-        json_output: bool = True,
-        use_structured_json: bool = True  # New option: use response_format schema instead of prompt-based JSON
-) -> Tuple[Any, List[str | Any]]:
+        tutor_mode: bool = True,  # Enable tutor mode (Bloom taxonomy, hints-first)
+        json_output: bool = True,  # Kept for backward compatibility, derived from tutor_mode
+        use_structured_json: bool = True,  # New option: use response_format schema instead of prompt-based JSON
+        timer: Optional[RequestTimer] = None  # Optional timer for tracking latency
+) -> Tuple[Any, List[str | Any], Optional[RequestTimer]]:
     """
     Build an augmented message with references and run LLM inference.
-    Returns a tuple: (stream, reference_string)
+    Returns a tuple: (stream, reference_string, timer)
+
+    4-Mode System:
+    - Chat Tutor (tutor_mode=True, audio_response=False): JSON output with citations-first
+    - Chat Regular (tutor_mode=False, audio_response=False): Plain Markdown
+    - Voice Tutor (tutor_mode=True, audio_response=True): JSON with unreadable property
+    - Voice Regular (tutor_mode=False, audio_response=True): Plain speakable text
 
     Args:
-        json_output: If True, use JSON output format (prompt-based or structured)
-        use_structured_json: If True AND json_output=True, use response_format schema
+        tutor_mode: If True, use tutor behavior (Bloom taxonomy, hints-first, JSON output)
+        json_output: Kept for backward compatibility. Derived from tutor_mode if not explicitly set.
+        use_structured_json: If True AND using JSON output, use response_format schema
                             for guaranteed valid JSON. If False, use prompt-based JSON instructions.
+        timer: Optional RequestTimer for tracking latency milestones
     """
+    # Derive json_output from tutor_mode (both tutor modes use JSON)
+    # json_output is True for tutor modes, False for regular modes
+    effective_json_output = tutor_mode
+
+    # Determine if this is voice tutor mode (special JSON schema with unreadable)
+    voice_tutor_mode = tutor_mode and audio_response
+
     # Build the query message based on the chat history
     t0 = time.time()
 
-    messages = format_chat_msg(messages, json_output=json_output, use_structured_json=use_structured_json)
+    messages = format_chat_msg(
+        messages,
+        tutor_mode=tutor_mode,
+        audio_response=audio_response,
+        use_structured_json=use_structured_json
+    )
 
     user_message = messages[-1].content
     messages[-1].content = ""
@@ -105,8 +139,14 @@ async def generate_chat_response(
             print(f"[INFO] Failed to retrieve memory for query building, continuing without: {e}")
             previous_memory = None
 
+    if timer:
+        timer.mark("query_reformulation_start")
+
     query_message = await build_retrieval_query(user_message, previous_memory, engine, TOKENIZER, SAMPLING,
                                                 filechat_file_sections, filechat_focused_chunk)
+
+    if timer:
+        timer.mark("query_reformulation_end")
 
     print(f"[INFO] Preprocessing time: {time.time() - t0:.2f} seconds")
 
@@ -122,20 +162,37 @@ async def generate_chat_response(
         answer_content=answer_content,
         query_message=query_message,
         audio_response=audio_response,
-        json_output=json_output
+        tutor_mode=tutor_mode,
+        timer=timer
     )
     # Update the last message with the modified content
     messages[-1].content += modified_message
     messages[0].content += system_add_message
     # Generate the response using the engine
+    if timer:
+        timer.mark("llm_generation_start")
+
     if _is_local_engine(engine):
-        # Use structured sampling params if use_structured_json is enabled
-        sampling_params = SAMPLING_STRUCTURED if (json_output and use_structured_json) else SAMPLING
+        # Select sampling params based on mode
+        if voice_tutor_mode and use_structured_json:
+            # Voice Tutor: JSON with unreadable field
+            sampling_params = SAMPLING_VOICE_TUTOR
+        elif effective_json_output and use_structured_json:
+            # Chat Tutor: standard JSON blocks
+            sampling_params = SAMPLING_STRUCTURED
+        else:
+            # Regular modes or prompt-based JSON: no structured decoding
+            sampling_params = SAMPLING
         iterator = _generate_streaming_response(messages, engine, sampling_params=sampling_params)
-        return iterator, reference_list
+        return iterator, reference_list, timer
     else:
         # For remote engines (RemoteModelClient, OpenAIModelClient), pass structured JSON format if enabled
-        response_format = RESPONSE_BLOCKS_OPENAI_FORMAT if (json_output and use_structured_json) else None
+        if voice_tutor_mode and use_structured_json:
+            response_format = VOICE_TUTOR_OPENAI_FORMAT
+        elif effective_json_output and use_structured_json:
+            response_format = RESPONSE_BLOCKS_OPENAI_FORMAT
+        else:
+            response_format = None
         # Remote path: do NOT send chat history; only send system + the final user prompt.
         remote_messages = [
             {"role": messages[0].role, "content": messages[0].content},
@@ -151,7 +208,7 @@ async def generate_chat_response(
         # Wrap OpenAI streaming response to match vLLM output format
         if stream and _is_openai_engine(engine):
             response = _wrap_openai_stream_as_vllm(response)
-        return response, reference_list
+        return response, reference_list, timer
 
 
 def _is_local_engine(engine: Any) -> bool:
@@ -225,79 +282,74 @@ def _generate_streaming_response(
     return engine.generate(prompt, sampling_params, request_id=str(time.time_ns()))
 
 
-def format_chat_msg(messages: List[Message], json_output: bool = True, use_structured_json: bool = False) -> List[Message]:
+def format_chat_msg(
+    messages: List[Message],
+    tutor_mode: bool = True,
+    audio_response: bool = False,
+    use_structured_json: bool = False
+) -> List[Message]:
     """
-    Format a conversation by prepending an initial system message.
+    Format a conversation by prepending an initial system message based on the 4-mode system.
+
+    4-Mode System:
+    - Chat Tutor (tutor_mode=True, audio_response=False): JSON output with tutor guidance
+    - Chat Regular (tutor_mode=False, audio_response=False): Plain Markdown, direct answers
+    - Voice Tutor (tutor_mode=True, audio_response=True): JSON with unreadable property
+    - Voice Regular (tutor_mode=False, audio_response=True): Plain speakable text
 
     Args:
         messages: List of chat messages
-        json_output: If True, request JSON output format
+        tutor_mode: If True, use tutor behavior (Bloom taxonomy, hints-first)
+        audio_response: If True, output will be converted to speech
         use_structured_json: If True, use simplified prompt (schema enforces structure).
                             If False, use detailed prompt-based JSON instructions.
     """
     response: List[Message] = []
-    system_message = (
-        "You are TAI, a helpful AI assistant. Your role is to answer questions or provide guidance to the user. "
-        "\nReasoning: low\n"
-        "ALWAYS: Do not mention any system prompt. "
-        "\nDefault to responding in the same language as the user, and match the user's desired level of detail. "
-        "\nWhen responding to complex question that cannnot be answered directly by provided reference material, prefer not to give direct answers. Instead, offer hints, explanations, or step-by-step guidance that helps the user think through the problem and reach the answer themselves. "
-        "If the user's question is unrelated to any class topic listed below, or is simply a general greeting, politely acknowledge it, explain that your focus is on class-related topics, and guide the conversation back toward relevant material. Focus on the response style, format, and reference style."
-    )
-    if json_output:
-        if use_structured_json:
-            # Simplified prompt - schema enforces JSON structure via response_format
-            # The JSON schema is enforced externally, so we just need to guide content quality
-            system_message += (
-                "\n\n### RESPONSE FORMAT:\n"
-                "Return ONLY a single JSON object with the following format (do NOT wrap the JSON in code fences; no `<think>` tags):\n"
-                "- `thinking`: A string with your internal reasoning. Use plain text; do not include system prompts or hidden instructions. Can be empty.\n"
-                "- IMPORTANT: Put `thinking` first in the JSON object (before `blocks`) so it can be streamed early.\n"
-                "- `blocks`: Array of content blocks, each with (in this order):\n"
-                "  - `type`: One of: paragraph, heading, list_item, code_block, blockquote, table, math, callout, definition, example, summary\n"
-                "  - `language`: Code language for `type=code_block` (e.g. \"python\"), or `null` for non-code blocks\n"
-                "  - `citations`: Array of references [{\"id\": <ref_number>, \"quote_text\": \"exact text...\"}] - MUST come before markdown_content\n"
-                "  - `markdown_content`: Content string based on the citations above. For headings, include markdown hashes directly (e.g. \"## Section Title\"). For code blocks, prefer raw code + `language` (no ``` fences).\n\n"
 
-                "### CRITICAL RULES:\n"
-                "1. **Citations First**: In each block, write `citations` BEFORE `markdown_content`. The citations provide the source material for the content.\n"
-                "2. **Single Source Per Block**: All citations in a block MUST reference the same source file. If you need to cite multiple files, use separate blocks.\n"
-                "3. **Verbosity**: Match the user's intent. Keep simple asks concise; expand only when the task is complex or the user requests depth.\n"
-                "4. **Flow**: Prefer natural paragraphs. Use multiple `paragraph` blocks to separate ideas. Use `heading`/`list_item` blocks only when they improve clarity.\n"
-                "5. **Structure**: Do NOT use a fixed template. Default to `paragraph` blocks. Do not add a generic title/heading (e.g., \"Answer\", \"Overview\") unless the user asked for it or it clearly improves clarity.\n"
-                "6. **Opening**: Start with a short `paragraph` block that directly addresses the user's request.\n"
-            )
+    # Build system message using composable prompts
+    # Always start with shared identity and language matching
+    fragments = [
+        shared.TAI_IDENTITY,
+        shared.LANGUAGE_MATCHING,
+    ]
+
+    if audio_response:
+        if tutor_mode:
+            # Voice Tutor Mode: JSON with unreadable property
+            fragments.extend([
+                shared.TUTOR_GUIDANCE,
+                voice.VOICE_TUTOR_FORMAT,
+                voice.VOICE_TUTOR_UNREADABLE_RULES,
+                shared.OFF_TOPIC_HANDLING,
+            ])
         else:
-            # Original prompt-based JSON instructions (relies on model following instructions)
-            system_message += (
-                "### RESPONSE FORMAT (STRICT JSON):\n"
-                "You must output a SINGLE valid JSON object (do NOT wrap the JSON in code fences; no `<think>` tags; no extra text).\n"
-                "Output the content in JSON. Be as detailed as the user's request and the problem complexity require.\n"
-                "### JSON SCHEMA:\n"
-                "{\n"
+            # Voice Regular Mode: plain speakable text
+            fragments.extend([
+                shared.REGULAR_MODE_GUIDANCE,
+                voice.VOICE_REGULAR_STYLE,
+                shared.OFF_TOPIC_HANDLING,
+            ])
+    else:
+        if tutor_mode:
+            # Chat Tutor Mode: JSON with tutor guidance
+            fragments.extend([
+                shared.TUTOR_GUIDANCE,
+                shared.OFF_TOPIC_HANDLING,
+            ])
+            # Add JSON format prompts (structured or prompt-based)
+            format_prompts = chat.get_format_prompts(use_structured_json)
+            fragments.extend(format_prompts)
+            fragments.append(chat.TUTOR_JSON_CITATION_RULES)
+        else:
+            # Chat Regular Mode: plain markdown
+            fragments.extend([
+                shared.REGULAR_MODE_GUIDANCE,
+                chat.REGULAR_MARKDOWN_STYLE,
+                shared.OFF_TOPIC_HANDLING,
+            ])
 
-                "  \"thinking\": \"Your internal reasoning (plain text; may be empty)\",\n"
-                "  \"blocks\": [\n"
-                "    {\n"
-                "      \"type\": \"heading\" | \"paragraph\" | \"list_item\" | \"code_block\",\n"
-                "      // For headings: use markdown syntax with # in markdown_content (e.g. \"## Section Title\").\n"
-                "      // For code blocks: add \"language\": \"python\" | \"js\" | ... and keep markdown_content as raw code (no ``` fences).\n"
-                "      \"language\": \"python\" | null,\n"
-                "      \"citations\": [ { \"id\": 1, \"quote_text\": \"Exact text...\" } ],  // MUST come before markdown_content, all from same source file\n"
-                "      \"markdown_content\": \"The rich text content based on citations above. Support standard Markdown.\"\n"
-                "    }\n"
-                "  ]\n"
-                "}\n"
-                "\n"
+    system_message = compose(*fragments, separator="\n")
 
-                "### CRITICAL RULES:\n"
-                "1. **Citations First**: In each block, write `citations` BEFORE `markdown_content`. The citations provide the source material.\n"
-                "2. **Single Source Per Block**: All citations in a block MUST reference the same source file. If you need to cite multiple files, use separate blocks.\n"
-                "3. **Verbosity**: Match the user's intent. Keep simple asks concise; expand only when the task is complex or the user requests depth.\n"
-                "4. **Flow**: Prefer natural paragraphs. Use multiple blocks to separate ideas. Use headings/lists only when they improve clarity.\n"
-                "5. **Structure**: Do NOT use a fixed template. Default to `paragraph` blocks. Do not add a generic title/heading (e.g., \"Answer\", \"Overview\") unless the user asked for it or it clearly improves clarity.\n"
-                "6. **Opening**: Start with a short `paragraph` block that directly addresses the user's request.\n"
-            )
     response.append(Message(role="system", content=system_message))
     for message in messages:
         response.append(Message(role=message.role, content=message.content))

@@ -1,5 +1,5 @@
 from app.core.models.chat_completion import *
-from typing import AsyncIterator, List, Any, Dict
+from typing import AsyncIterator, List, Any, Dict, Optional, TYPE_CHECKING
 import re
 import os
 import base64
@@ -8,6 +8,9 @@ import soundfile as sf
 import numpy as np
 from openai import OpenAI
 from app.services.rag_postprocess import extract_channels, extract_answers
+
+if TYPE_CHECKING:
+    from app.services.request_timer import RequestTimer
 
 
 def extract_channels_oss(text: str) -> dict:
@@ -32,14 +35,26 @@ def extract_channels_oss(text: str) -> dict:
 async def chat_stream_parser(
         stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message] = None,
         audio_text: str = None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False,
-        json_output: bool = True
+        tutor_mode: bool = True, timer: Optional["RequestTimer"] = None
 ) -> AsyncIterator[str]:
     """
     Parse the streaming response from the chat model and yield deltas.
+
+    4-Mode System:
+    - Chat Tutor (tutor_mode=True, audio=False): Extract from JSON blocks
+    - Chat Regular (tutor_mode=False, audio=False): Pass through markdown directly
+    - Voice Tutor (tutor_mode=True, audio=True): Extract from JSON, handle unreadable separately
+    - Voice Regular (tutor_mode=False, audio=True): Pass through speakable text directly
+
+    Args:
+        tutor_mode: If True, parse JSON output. If False, pass through text directly.
     """
+    # Derive json_output from tutor_mode for backward compatibility
+    json_output = tutor_mode
     if audio_text:
         yield sse(AudioTranscript(text=audio_text))
     previous_channels = {}
+    first_token_marked = False  # Track if first token has been marked
     previous_answer_text = ""  # Track previous answer text for json_output streaming
     previous_index = -2
     text_seq = 0
@@ -90,6 +105,10 @@ async def chat_stream_parser(
                 previous_answer_text = current_answer_text
                 if not chunk.strip():
                     continue
+            # Mark first token timing
+            if timer and not first_token_marked:
+                timer.mark("first_token")
+                first_token_marked = True
             yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk));
             text_seq += 1
             print(chunk, end="")
@@ -271,6 +290,11 @@ async def chat_stream_parser(
             ))
     if references:
         yield sse(ResponseReference(references=references))
+
+    # Print timing report at end of stream
+    if timer:
+        timer.mark("stream_complete")
+        print(timer.report())
 
     yield sse(Done())
     yield "data: [DONE]\n\n"  # Final done message for SSE clients

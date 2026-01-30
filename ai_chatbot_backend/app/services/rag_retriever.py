@@ -5,7 +5,7 @@ import pickle
 import sqlite3
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from uuid import UUID
 # Third-party libraries
 import numpy as np
@@ -15,6 +15,9 @@ from urllib.parse import quote
 # Local libraries; import and initialize the embedding model from app dependencies.
 from app.dependencies.model import get_embedding_engine
 embedding_model = get_embedding_engine()
+
+if TYPE_CHECKING:
+    from app.services.request_timer import RequestTimer
 # Environment Variables
 # Get the project root directory (ai_chatbot_backend/)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -29,19 +32,38 @@ _course_lock = threading.Lock()
 
 
 def get_reference_documents(
-    query: str, course: str, top_k: int
+    query: str, course: str, top_k: int, timer: Optional["RequestTimer"] = None
 ) -> Tuple[Tuple[List[str], List[str], List[str], List[float], List[str], List[str], List[str]], str]:
     """
     Retrieve top reference documents based on the query embedding and choice of DB-type.
     """
     class_name = _get_pickle_and_class(course)
+
+    # Mark embedding start
+    if timer:
+        timer.mark("embedding_start")
     t0 = time.time()
+
     query_embed = {"dense_vecs": embedding_model.encode(query, prompt_name="query")}
+
+    # Mark embedding end
+    if timer:
+        timer.mark("embedding_end")
     print(f"[INFO] Embedding time: {time.time() - t0:.2f} seconds")
+
+    # Mark retrieval start
+    if timer:
+        timer.mark("retrieval_start")
     t1 = time.time()
+
     if SQLDB:
         output = _get_references_from_sql(query_embed, course, top_k=top_k)
+
+    # Mark retrieval end
+    if timer:
+        timer.mark("retrieval_end")
     print(f"[INFO] Retrieval time: {time.time() - t1:.2f} seconds")
+
     return output, class_name
 
 # TODO: Move to new file_service

@@ -6,6 +6,10 @@ from uuid import UUID
 from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, \
     get_file_related_documents
 from app.services.rag_postprocess import extract_channels
+from app.services.request_timer import RequestTimer
+from app.prompts import shared, voice, chat
+from app.prompts import rag as rag_prompts
+from app.prompts.base import compose, PromptFragment
 
 
 async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine: Any, tokenizer: Any, sampling: Any,
@@ -16,17 +20,7 @@ async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine:
     Returns plain text with no quotes or extra formatting.
     """
     # Prepare the chat history for the model
-    system_prompt = (
-        "You are a query reformulator for a RAG system. "
-        "Given the user message and the memory synopsis of the current conversation as well as the file context if any, "
-        "rewrite the latest user request as a single, "
-        "self-contained question for document retrieval. "
-        "Resolve pronouns and references using context, include relevant constraints "
-        "(dates, versions, scope), and avoid adding facts not in the history. "
-        "Return only the rewritten query as question in plain text—no quotes, no extra text."
-        "# Valid channels: analysis, commentary, final. Channel must be included for every message."
-        "Calls to these tools must go to the commentary channel: 'functions'.<|end|>"
-    )
+    system_prompt = str(rag_prompts.QUERY_REFORMULATOR)
 
     # If no context is provided, return the original user message
     if not memory_synopsis and not file_sections and not excerpt:
@@ -79,13 +73,22 @@ def build_augmented_prompt(
         problem_content: Optional[str] = None,
         answer_content: Optional[str] = None,
         audio_response: bool = False,
-        json_output: bool = True
+        tutor_mode: bool = True,
+        timer: Optional[RequestTimer] = None
 ) -> Tuple[str, List[Dict], str]:
     """
     Build an augmented prompt by retrieving reference documents.
+
+    4-Mode System:
+    - Chat Tutor (tutor_mode=True, audio_response=False): JSON with citations-first
+    - Chat Regular (tutor_mode=False, audio_response=False): Plain Markdown
+    - Voice Tutor (tutor_mode=True, audio_response=True): JSON with unreadable property
+    - Voice Regular (tutor_mode=False, audio_response=True): Plain speakable text
+
     Returns:
       - modified_message: the augmented instruction prompt.
       - reference_list: list of reference URLs for JSON output.
+      - system_add_message: additional system message content.
     """
     # Practice mode has its own message format
     if answer_content and problem_content:
@@ -108,7 +111,7 @@ def build_augmented_prompt(
     (
         top_chunk_uuids, top_docs, top_urls, similarity_scores, top_files, top_refs, top_titles,
         top_file_uuids, top_chunk_idxs
-    ), class_name = get_reference_documents(query_message, course, top_k=top_k)
+    ), class_name = get_reference_documents(query_message, course, top_k=top_k, timer=timer)
     # Prepare the insert document and reference list
     insert_document = ""
     reference_list = reference_list or []
@@ -128,94 +131,56 @@ def build_augmented_prompt(
                 f'Document: {top_docs[i]}\n\n'
             )
             reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
-    # Create response and reference styles based on audio mode and json_output flag.
-    if not audio_response:
-        if json_output:
-            response_style = (
-                "\nResponse style: Write in natural paragraphs (clear separation between ideas). "
-                "Do not force a fixed template or heavy headings. "
-                "Do not add a generic title/heading (e.g., \"Answer\", \"Overview\") unless the user asked for it or it clearly improves clarity. "
-                "Avoid the pattern of a single heading followed by a single paragraph; if the response is short, just write a single paragraph. "
-                "Match the user's language by default, and adjust depth to the user's intent: "
-                "concise for simple asks, more detailed for complex ones or when the user requests it. "
-                "Use headings or lists only when they genuinely improve clarity (e.g., steps, checklists, comparisons). "
-                "When the user is solving a problem, guide with hints and questions before giving a final answer."
-            )
 
-            reference_style = (
-                "\nReference evidence rules: Ground concrete claims in the provided References. "
-                "When a block relies on a reference, copy the exact supporting sentence into "
-                "`citations[].quote_text`. Keep `markdown_content` clean (no inline citation markers)."
-            )
+    # Create response and reference styles based on 4-mode system
+    if audio_response:
+        if tutor_mode:
+            # Voice Tutor Mode: JSON format with unreadable property
+            response_style = str(voice.VOICE_TUTOR_FORMAT)
+            reference_style = str(chat.TUTOR_JSON_CITATION_RULES)
         else:
-            # Original markdown format
-            response_style = (
-                "Answer in clear Markdown using natural paragraphs (do not add '```markdown'). "
-                "Use headings or lists only when they genuinely improve readability. "
-                "When relevant, briefly mention what the reference is (e.g., textbook/notes) and what it's about. "
-                "Quote the reference if needed. Do not list references at the end."
-            )
-            # "[Reference: a; Quote: 'xxx to xxx']"
-            reference_style = (
-                f"\nALWAYS: Refer to specific reference numbers inline using [Reference: a,b] style!!! Do not use other style like refs, 【】, Reference: [n], > *Reference: n*, [Reference: a-b]  or (reference n)!!!"
-                f"\nDo not list references at the end. "
-            )
+            # Voice Regular Mode: plain speakable text
+            response_style = str(voice.VOICE_REGULAR_STYLE)
+            reference_style = str(voice.SPEAKABLE_REFERENCES)
     else:
-        response_style = """
-        STYLE:
-        Use a speaker-friendly tone. Try to end every sentence with a period '.'. ALWAYS: Avoid code block, Markdown formatting or math equation!!! No references at the end or listed without telling usage.
-        Make the first sentence short and engaging. If no instruction is given, explain that you did not hear any instruction. Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. 
-        Do not use symbols that are not readable in speech, such as (, ), [, ], {, }, <, >, *, #, -, !, $, %, ^, &, =, +, \, /, ~, `, etc. In this way, avoid code, Markdown formatting or math equation!!!
-        """
-        reference_style = (
-            "\nREFERENCE USAGE:"
-            f"\nMention specific reference numbers inline when that part of the answer is refer to some reference. Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
-            f"\nALWAYS: Do not mention references in a unreadable format like refs, 【】, Reference: [n], > *Reference: n* or (reference n)!!! Those are not understandable since the output is going to be converted to speech. "
-        )
-    # Create modified message based on whether documents were inserted
+        if tutor_mode:
+            # Chat Tutor Mode: JSON with citations-first
+            response_style = str(chat.JSON_RESPONSE_STYLE)
+            reference_style = str(chat.TUTOR_JSON_CITATION_RULES)
+        else:
+            # Chat Regular Mode: plain markdown
+            response_style = str(chat.REGULAR_MARKDOWN_STYLE)
+            reference_style = str(chat.MARKDOWN_CITATION_RULES)
 
+    # Select appropriate tutor prompt based on mode
+    tutor_prompt = rag_prompts.TUTOR_ROLE_ENHANCED if tutor_mode else rag_prompts.REFERENCE_REVIEW
+
+    # Create modified message based on whether documents were inserted
     if not insert_document or n == 0:
         print("[INFO] No relevant documents found above the similarity threshold.")
-        system_add_message = (
-            f"\n{response_style}\n\n"
-            "If the question is complex, provide hints, explanations, or step-by-step guidance instead of a direct final answer.\n\n"
-            "If you are unsure after making a reasonable effort, explain that there is no relevant data in the knowledge base.\n\n"
-            f"Refuse only if the question is clearly unrelated to any topic in {course}: {class_name} and is not a general, reasonable query.\n\n"
-            "If the intent is unclear, ask clarifying questions rather than refusing."
+        # Build system message for no-refs scenario using composable prompts
+        no_refs_course_context = rag_prompts.build_no_refs_course_context(course, class_name)
+        system_add_message = compose(
+            PromptFragment(content=f"\n{response_style}"),
+            rag_prompts.NO_REFS_GUIDANCE,
+            no_refs_course_context,
+            separator="\n\n"
         )
-        modified_message = (
-            f""
-        )
+        modified_message = ""
     else:
         print("[INFO] Relevant documents found and inserted into the prompt.")
-        # TODO
-        #tutor mode
-        # TODO
-        # first citation then answer, only one id and then use citiation to answer
-        # TODO
-        # talk like a tutor pretend to open the citation highlight the quote_text to give the explanation with markdown content
-        system_add_message = (
-            f"\n{response_style}\n\n"
-            "Review the reference documents, considering their Directory Path (original file location), "
-            "Topic Path (section/title), and the chunk content. Select only the most relevant references.\n\n"
-            "Role: You are an adaptive, encouraging tutor using Bloom taxonomy and the provided references. "
-            "Praise curiosity, link to prior knowledge, and keep explanations focused on core ideas from the references.\n\n"
-            "Quickly identify the user's goal (Understand / Apply–Analyze / Evaluate–Create) and respond accordingly. "
-            "If the goal is Understand, explain the key idea clearly and give a simple example, then ask if they want deeper exploration. "
-            "If the goal is Apply–Analyze, clarify what's being asked and what prerequisites are involved, offer hints or a plan, wait for an attempt, "
-            "then guide step-by-step using the references (do not give the final answer immediately). "
-            "If the goal is Evaluate–Create, ask for their approach first, then guide reflection with criteria (correctness, completeness, trade-offs), "
-            "note assumptions, and suggest a structure (do not provide a full solution).\n\n"
-            "Always ground reasoning in the references and briefly note how each reference supports the step. "
-            "Prefer hints and reflection, and end each turn by inviting the user's next action."
-            f"{reference_style}\n\n"
-            "Exclude irrelevant references. If, after reasonable effort, no relevant information is found, state that there is no data in the knowledge base.\n\n"
-            f"Refuse only if the question is clearly unrelated to any topic in {course}: {class_name}, is not a general query, and has no link to the provided references.\n\n"
-            "If intent is unclear, ask clarifying questions before refusing."
+        # Build system message with appropriate tutor role using composable prompts
+        course_context = rag_prompts.build_course_context(course, class_name)
+        system_add_message = compose(
+            PromptFragment(content=f"\n{response_style}"),
+            tutor_prompt,
+            PromptFragment(content=reference_style),
+            rag_prompts.EXCLUDE_IRRELEVANT_REFS,
+            course_context,
+            rag_prompts.CLARIFY_BEFORE_REFUSING,
+            separator="\n\n"
         )
-        modified_message = (
-            f"{insert_document}\n---\n"
-        )
+        modified_message = f"{insert_document}\n---\n"
     # Append user instruction to the modified message
     if not (answer_content and problem_content):
         modified_message += f"Instruction: {user_message}"
