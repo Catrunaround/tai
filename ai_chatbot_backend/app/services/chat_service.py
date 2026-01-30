@@ -78,10 +78,6 @@ async def chat_stream_parser(
     """, re.VERBOSE)
     async for output in stream:
         text = output.outputs[0].text
-        # Debug: log raw VLLM output
-        print(f"\n[DEBUG VLLM] Raw output type: {type(output)}")
-        print(f"[DEBUG VLLM] outputs count: {len(output.outputs)}")
-        print(f"[DEBUG VLLM] text (first 200 chars): {text[:200] if text else 'empty'}")
         channels = extract_channels(text)
         # print(channels)
         if not channels:

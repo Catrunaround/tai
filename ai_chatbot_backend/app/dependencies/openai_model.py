@@ -7,7 +7,7 @@ Supports OpenAI's native structured output (response_format with json_schema).
 import json
 from typing import Optional, Dict, Any, Iterator
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 
 class OpenAIModelClient:
@@ -34,7 +34,7 @@ class OpenAIModelClient:
             raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY in .env")
 
         self.model = model
-        self.client = OpenAI(api_key=api_key)
+        self.client = AsyncOpenAI(api_key=api_key)
 
     @staticmethod
     def _should_use_responses_api(model: str) -> bool:
@@ -62,7 +62,7 @@ class OpenAIModelClient:
                 return converted
         return response_format
 
-    def __call__(
+    async def __call__(
         self,
         prompt: str,
         **kwargs
@@ -106,7 +106,7 @@ class OpenAIModelClient:
                     "format": self._convert_response_format_for_responses(response_format)
                 }
             try:
-                response = self.client.responses.create(**response_params)
+                response = await self.client.responses.create(**response_params)
                 if stream:
                     return self._stream_response_responses(response)
                 return self._format_responses_response(response)
@@ -127,7 +127,7 @@ class OpenAIModelClient:
             request_params["response_format"] = response_format
 
         try:
-            response = self.client.chat.completions.create(**request_params)
+            response = await self.client.chat.completions.create(**request_params)
 
             if stream:
                 return self._stream_response(response)
@@ -136,7 +136,7 @@ class OpenAIModelClient:
         except Exception as e:
             raise Exception(f"OpenAI API request failed: {str(e)}")
 
-    def _stream_response(self, response) -> Iterator[str]:
+    async def _stream_response(self, response) -> Iterator[str]:
         """
         Convert OpenAI streaming response to NDJSON format matching RemoteModelClient.
 
@@ -144,13 +144,13 @@ class OpenAIModelClient:
         """
         print("\n[OpenAI Stream] Starting streaming response (chat.completions)...")
         accumulated = ""
-        for chunk in response:
+        async for chunk in response:
             # Debug: log raw chunk structure
-            print(f"\n[DEBUG OpenAI Chat] Chunk: {chunk}")
-            print(f"[DEBUG OpenAI Chat] choices: {chunk.choices if chunk.choices else 'none'}")
-            if chunk.choices and chunk.choices[0].delta:
-                print(f"[DEBUG OpenAI Chat] delta: {chunk.choices[0].delta}")
-                print(f"[DEBUG OpenAI Chat] delta.content: {chunk.choices[0].delta.content}")
+            # print(f"\n[DEBUG OpenAI Chat] Chunk: {chunk}")
+            # print(f"[DEBUG OpenAI Chat] choices: {chunk.choices if chunk.choices else 'none'}")
+            # if chunk.choices and chunk.choices[0].delta:
+            #     print(f"[DEBUG OpenAI Chat] delta: {chunk.choices[0].delta}")
+            #     print(f"[DEBUG OpenAI Chat] delta.content: {chunk.choices[0].delta.content}")
 
             if chunk.choices and chunk.choices[0].delta.content:
                 token = chunk.choices[0].delta.content
@@ -164,19 +164,14 @@ class OpenAIModelClient:
         print(accumulated)
         print("[OpenAI Stream] End of response\n")
 
-    def _stream_response_responses(self, response) -> Iterator[str]:
+    async def _stream_response_responses(self, response) -> Iterator[str]:
         """
         Convert OpenAI Responses API streaming events to NDJSON token stream.
         """
         print("\n[OpenAI Stream] Starting streaming response (responses API / GPT-5.x)...")
         accumulated = ""
-        for event in response:
+        async for event in response:
             event_type = getattr(event, "type", "")
-            # Debug: log ALL events to understand the structure
-            print(f"\n[DEBUG GPT-5 Responses] Event type: {event_type}")
-            print(f"[DEBUG GPT-5 Responses] Event attrs: {[a for a in dir(event) if not a.startswith('_')]}")
-            print(f"[DEBUG GPT-5 Responses] Event: {event}")
-
             if event_type == "response.output_text.delta":
                 token = event.delta
                 if token:

@@ -198,13 +198,23 @@ async def generate_chat_response(
             {"role": messages[0].role, "content": messages[0].content},
             {"role": messages[-1].role, "content": messages[-1].content},
         ]
-        response = engine(
-            messages[-1].content,
-            messages=remote_messages,
-            stream=stream,
-            course=course,
-            response_format=response_format,
-        )
+        # OpenAI and local engines are async, remote/mock are sync
+        if _is_openai_engine(engine) or _is_local_engine(engine):
+            response = await engine(
+                messages[-1].content,
+                messages=remote_messages,
+                stream=stream,
+                course=course,
+                response_format=response_format,
+            )
+        else:
+            response = engine(
+                messages[-1].content,
+                messages=remote_messages,
+                stream=stream,
+                course=course,
+                response_format=response_format,
+            )
         # Wrap OpenAI streaming response to match vLLM output format
         if stream and _is_openai_engine(engine):
             response = _wrap_openai_stream_as_vllm(response)
@@ -246,22 +256,17 @@ async def _wrap_openai_stream_as_vllm(openai_stream):
 
     This wrapper accumulates tokens and yields vLLM-compatible chunks.
     """
-    print("\n[DEBUG Wrapper] Starting to wrap OpenAI stream as VLLM format...")
     accumulated_text = ""
-    for line in openai_stream:
-        print(f"[DEBUG Wrapper] Received line: {line[:100] if line else 'empty'}...")
+    async for line in openai_stream:
         if not line or not line.strip():
             continue
         try:
             data = json.loads(line)
-            print(f"[DEBUG Wrapper] Parsed data: {data}")
             if data.get("type") == "token":
                 accumulated_text += data.get("data", "")
                 yield MockVLLMChunk(outputs=[MockVLLMOutput(text=accumulated_text)])
         except json.JSONDecodeError:
-            print(f"[DEBUG Wrapper] JSON decode error for: {line[:50]}")
             continue
-    print(f"[DEBUG Wrapper] Final accumulated text length: {len(accumulated_text)}")
 
 
 def _generate_streaming_response(
