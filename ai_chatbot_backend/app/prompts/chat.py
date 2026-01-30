@@ -75,6 +75,18 @@ JSON_RESPONSE_STYLE = PromptFragment(
     description="Response style guidance for JSON output mode."
 )
 
+JSON_STRICT_ENFORCEMENT = PromptFragment(
+    content=(
+        "\n### STRICT JSON OUTPUT REQUIREMENT:\n"
+        "You MUST output ONLY valid JSON with no additional text or markdown formatting.\n"
+        "Do NOT include ```json code fences, explanations, or any text outside the JSON object.\n"
+        "\n"
+        "Example output format:\n"
+        '{"thinking": "", "blocks": [{"type": "paragraph", "language": null, "citations": [], "markdown_content": "Your response here."}]}\n'
+    ),
+    description="Strict JSON enforcement for models that need explicit format instructions (e.g., Qwen3)."
+)
+
 JSON_CITATION_RULES = PromptFragment(
     content=(
         "\nReference evidence rules: Ground concrete claims in the provided References. "
@@ -155,6 +167,6 @@ def get_format_prompts(use_structured_json: bool = False) -> List[PromptFragment
         List of PromptFragment objects for the selected format.
     """
     if use_structured_json:
-        return [JSON_FORMAT_STRUCTURED, JSON_CRITICAL_RULES]
+        return [JSON_FORMAT_STRUCTURED, JSON_STRICT_ENFORCEMENT, JSON_CRITICAL_RULES]
     else:
-        return [JSON_FORMAT_PROMPT_BASED, JSON_CRITICAL_RULES]
+        return [JSON_FORMAT_PROMPT_BASED, JSON_STRICT_ENFORCEMENT, JSON_CRITICAL_RULES]

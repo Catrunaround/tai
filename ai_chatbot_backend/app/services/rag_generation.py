@@ -246,17 +246,22 @@ async def _wrap_openai_stream_as_vllm(openai_stream):
 
     This wrapper accumulates tokens and yields vLLM-compatible chunks.
     """
+    print("\n[DEBUG Wrapper] Starting to wrap OpenAI stream as VLLM format...")
     accumulated_text = ""
     for line in openai_stream:
+        print(f"[DEBUG Wrapper] Received line: {line[:100] if line else 'empty'}...")
         if not line or not line.strip():
             continue
         try:
             data = json.loads(line)
+            print(f"[DEBUG Wrapper] Parsed data: {data}")
             if data.get("type") == "token":
                 accumulated_text += data.get("data", "")
                 yield MockVLLMChunk(outputs=[MockVLLMOutput(text=accumulated_text)])
         except json.JSONDecodeError:
+            print(f"[DEBUG Wrapper] JSON decode error for: {line[:50]}")
             continue
+    print(f"[DEBUG Wrapper] Final accumulated text length: {len(accumulated_text)}")
 
 
 def _generate_streaming_response(
