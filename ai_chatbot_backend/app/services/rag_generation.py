@@ -6,8 +6,7 @@ import time
 from typing import Any, Optional, Tuple, List, Union
 from dataclasses import dataclass
 # Third-party libraries
-from transformers import AutoTokenizer
-from vllm import SamplingParams
+from openai import OpenAI, AsyncOpenAI
 # Local libraries
 from app.core.models.chat_completion import Message, UserFocus
 from app.services.rag_preprocess import build_retrieval_query, build_augmented_prompt, build_file_augmented_context
@@ -18,40 +17,17 @@ from app.services.rag_postprocess import (
 from app.services.request_timer import RequestTimer
 from app.prompts import shared, chat, voice
 from app.prompts.base import compose
-# Environment Variables
-# TOKENIZER_MODEL_ID = "THUDM/GLM-4-9B-0414"
+from app.config import settings
 from app.dependencies.model import LLM_MODEL_ID
 
-# TOKENIZER_MODEL_ID = "kaitchup/GLM-Z1-32B-0414-autoround-gptq-4bit"
-# RAG-Pipeline Shared Resources
-# Block "thinking" wrappers at generation-time (built-in vLLM sampling param).
-# This helps prevent models like Qwen-*Thinking* from spending tokens on `<think>...</think>` output.
-NO_THINK_BAD_WORDS = ["<think>", "</think>"]
+# Sampling parameters for generation (used with OpenAI API)
+SAMPLING_PARAMS = {
+    "temperature": 0.6,
+    "top_p": 0.95,
+    "max_tokens": 6000,
+    "extra_body": {"top_k": 20, "min_p": 0}
+}
 
-SAMPLING = SamplingParams(
-    temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000,
-    bad_words=NO_THINK_BAD_WORDS
-)
-# Sampling params with structured JSON output (uses GuidedDecodingParams for guaranteed valid JSON)
-SAMPLING_STRUCTURED = SamplingParams(
-    temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000,
-    guided_decoding=GUIDED_RESPONSE_BLOCKS,
-    bad_words=NO_THINK_BAD_WORDS
-)
-# Sampling params for voice tutor mode (JSON with unreadable field)
-SAMPLING_VOICE_TUTOR = SamplingParams(
-    temperature=0.6, top_p=0.95, top_k=20, min_p=0, max_tokens=6000,
-    guided_decoding=GUIDED_VOICE_TUTOR_BLOCKS,
-    bad_words=NO_THINK_BAD_WORDS
-)
-TOKENIZER = AutoTokenizer.from_pretrained(LLM_MODEL_ID)
-
-"""
-class UserFocus(BaseModel):
-    file_uuid: UUID
-    selected_text: str = None
-    chunk_index: float = None
-"""
 
 
 async def generate_chat_response(
@@ -142,7 +118,7 @@ async def generate_chat_response(
     if timer:
         timer.mark("query_reformulation_start")
 
-    query_message = await build_retrieval_query(user_message, previous_memory, engine, TOKENIZER, SAMPLING,
+    query_message = await build_retrieval_query(user_message, previous_memory, engine,
                                                 filechat_file_sections, filechat_focused_chunk)
 
     if timer:
@@ -172,18 +148,8 @@ async def generate_chat_response(
     if timer:
         timer.mark("llm_generation_start")
 
-    if _is_local_engine(engine):
-        # Select sampling params based on mode
-        if voice_tutor_mode and use_structured_json:
-            # Voice Tutor: JSON with unreadable field
-            sampling_params = SAMPLING_VOICE_TUTOR
-        elif effective_json_output and use_structured_json:
-            # Chat Tutor: standard JSON blocks
-            sampling_params = SAMPLING_STRUCTURED
-        else:
-            # Regular modes or prompt-based JSON: no structured decoding
-            sampling_params = SAMPLING
-        iterator = _generate_streaming_response(messages, engine, sampling_params=sampling_params)
+    if _is_openai_client(engine):
+        iterator = _generate_streaming_response(messages, engine)
         return iterator, reference_list, timer
     else:
         # For remote engines (RemoteModelClient, OpenAIModelClient), pass structured JSON format if enabled
@@ -198,41 +164,21 @@ async def generate_chat_response(
             {"role": messages[0].role, "content": messages[0].content},
             {"role": messages[-1].role, "content": messages[-1].content},
         ]
-        # OpenAI and local engines are async, remote/mock are sync
-        if _is_openai_engine(engine) or _is_local_engine(engine):
-            response = await engine(
-                messages[-1].content,
-                messages=remote_messages,
-                stream=stream,
-                course=course,
-                response_format=response_format,
-            )
-        else:
-            response = engine(
-                messages[-1].content,
-                messages=remote_messages,
-                stream=stream,
-                course=course,
-                response_format=response_format,
-            )
-        # Wrap OpenAI streaming response to match vLLM output format
-        if stream and _is_openai_engine(engine):
-            response = _wrap_openai_stream_as_vllm(response)
+        response = engine(
+            messages[-1].content,
+            messages=remote_messages,
+            stream=stream,
+            course=course,
+            response_format=response_format,
+        )
         return response, reference_list, timer
 
 
-def _is_local_engine(engine: Any) -> bool:
+def _is_openai_client(engine: Any) -> bool:
     """
-    Check if the engine is a local instance by verifying if it has an 'is_running' attribute.
+    Check if the engine is an OpenAI or AsyncOpenAI client instance.
     """
-    return hasattr(engine, "is_running") and engine.is_running
-
-
-def _is_openai_engine(engine: Any) -> bool:
-    """
-    Check if the engine is an OpenAI client.
-    """
-    return hasattr(engine, '__class__') and 'OpenAI' in engine.__class__.__name__
+    return isinstance(engine, (OpenAI, AsyncOpenAI))
 
 
 @dataclass
@@ -247,49 +193,36 @@ class MockVLLMChunk:
     outputs: List[MockVLLMOutput]
 
 
-async def _wrap_openai_stream_as_vllm(openai_stream):
+async def _generate_streaming_response(messages: List[Message], client: Any):
     """
-    Wrap OpenAI streaming response to match vLLM output format.
+    Generate a streaming response from the vLLM server using OpenAI chat completions API.
 
-    vLLM yields: output.outputs[0].text (cumulative text)
-    OpenAI yields: NDJSON strings with incremental tokens
+    Yields raw streaming chunks that contain:
+    - delta.reasoning_content: The reasoning/thinking content (analysis channel)
+    - delta.content: The final response content (final channel)
 
-    This wrapper accumulates tokens and yields vLLM-compatible chunks.
+    The vLLM server with --reasoning-parser flag separates these automatically.
     """
-    accumulated_text = ""
-    async for line in openai_stream:
-        if not line or not line.strip():
-            continue
-        try:
-            data = json.loads(line)
-            if data.get("type") == "token":
-                accumulated_text += data.get("data", "")
-                yield MockVLLMChunk(outputs=[MockVLLMOutput(text=accumulated_text)])
-        except json.JSONDecodeError:
-            continue
-
-
-def _generate_streaming_response(
-        messages: List[Message],
-        engine: Any = None,
-        sampling_params: SamplingParams = None
-) -> Any:
-    """
-    Generate a streaming response from the model based on the provided messages.
-
-    Args:
-        messages: List of chat messages
-        engine: The LLM engine to use
-        sampling_params: Sampling parameters (uses SAMPLING by default, or SAMPLING_STRUCTURED for structured JSON)
-    """
-    if sampling_params is None:
-        sampling_params = SAMPLING
     chat = [
-        {"role": m.role, "content": m.content, "tool_call_id": m.tool_call_id}
+        {"role": m.role, "content": m.content}
         for m in messages
     ]
-    prompt = TOKENIZER.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
-    return engine.generate(prompt, sampling_params, request_id=str(time.time_ns()))
+
+    stream = await client.chat.completions.create(
+        model=settings.vllm_chat_model,
+        messages=chat,
+        stream=True,
+        temperature=SAMPLING_PARAMS["temperature"],
+        top_p=SAMPLING_PARAMS["top_p"],
+        max_tokens=SAMPLING_PARAMS["max_tokens"],
+        extra_body=SAMPLING_PARAMS["extra_body"]
+    )
+
+    # Yield raw chunks - chat_stream_parser handles reasoning_content vs content
+    async for chunk in stream:
+        if chunk.choices:
+            yield chunk
+
 
 
 def format_chat_msg(

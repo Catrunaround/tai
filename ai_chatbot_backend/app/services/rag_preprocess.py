@@ -2,18 +2,19 @@
 import time
 from typing import Any, Optional, Tuple, List, Dict
 from uuid import UUID
+# Third-party libraries
+from openai import OpenAI, AsyncOpenAI
 # Local libraries
-from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, \
-    get_file_related_documents
+from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, get_file_related_documents
 from app.services.rag_postprocess import extract_channels
 from app.services.request_timer import RequestTimer
 from app.prompts import shared, voice, chat
 from app.prompts import rag as rag_prompts
 from app.prompts.base import compose, PromptFragment
+from app.config import settings
 
 
-async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine: Any, tokenizer: Any, sampling: Any,
-                                file_sections: Any = None, excerpt: Any = None) -> str:
+async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine: Any, file_sections: Any = None, excerpt: Any = None) -> str:
     """
     Reformulate the latest user request into a single self-contained query string,
     based on the full chat history (user + assistant messages).
@@ -44,22 +45,29 @@ async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine:
 
     request_content = "\n".join(request_parts)
 
-    chat = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": request_content}
-    ]
-    prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
-    # Generate the query using the engine
-    text = ""
-    async for chunk in engine.generate(
-            prompt=prompt,
-            sampling_params=sampling,
-            request_id=str(time.time_ns())
-    ):
-        text = chunk.outputs[0].text
-    text = extract_channels(text).get('final', "{}")
-    print(f"[INFO] Generated RAG-Query: {text.strip()}")
-    return text
+    # Check if engine is OpenAI client
+    if isinstance(engine, (OpenAI, AsyncOpenAI)):
+        chat = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": request_content}
+        ]
+        # Generate the query using the OpenAI API
+        response = await engine.chat.completions.create(
+            model=settings.vllm_chat_model,
+            messages=chat,
+            temperature=0.6,
+            top_p=0.95,
+            max_tokens=500,
+            extra_body={"top_k": 20, "min_p": 0}
+        )
+        # vLLM with --reasoning-parser separates reasoning_content from content
+        # Use content directly (final response without thinking)
+        text = response.choices[0].message.content or ""
+        print(f"[INFO] Generated RAG-Query: {text.strip()}")
+        return text.strip()
+    else:
+        # Fallback for remote/mock pipelines
+        return user_message
 
 
 def build_augmented_prompt(
@@ -156,6 +164,7 @@ def build_augmented_prompt(
     tutor_prompt = rag_prompts.TUTOR_ROLE_ENHANCED if tutor_mode else rag_prompts.REFERENCE_REVIEW
 
     # Create modified message based on whether documents were inserted
+
     if not insert_document or n == 0:
         print("[INFO] No relevant documents found above the similarity threshold.")
         # Build system message for no-refs scenario using composable prompts

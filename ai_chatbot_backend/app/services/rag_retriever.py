@@ -12,18 +12,49 @@ import numpy as np
 from pathlib import Path
 from contextlib import contextmanager
 from urllib.parse import quote
-# Local libraries; import and initialize the embedding model from app dependencies.
+from openai import OpenAI
+# Local libraries; import and initialize the embedding client from app dependencies.
 from app.dependencies.model import get_embedding_engine
-embedding_model = get_embedding_engine()
+from app.config import settings
 
 if TYPE_CHECKING:
     from app.services.request_timer import RequestTimer
-# Environment Variables
-# Get the project root directory (ai_chatbot_backend/)
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-EMBEDDING_PICKLE_PATH = _PROJECT_ROOT / "app" / "embedding"
-_METADATA_DB_PATH = _PROJECT_ROOT / "db" / "metadata.db"
-DB_URI_RO = f"file:{quote(str(_METADATA_DB_PATH))}?mode=ro&cache=shared"
+
+# Initialize embedding client (lazy loading)
+_embedding_client: Optional[OpenAI] = None
+
+
+def _get_embedding_client() -> OpenAI:
+    """Get or initialize the embedding client."""
+    global _embedding_client
+    if _embedding_client is None:
+        _embedding_client = get_embedding_engine()
+    return _embedding_client
+
+
+def _get_embedding(query: str) -> np.ndarray:
+    """
+    Get embedding for a query using vLLM embedding server via OpenAI API.
+    Uses instruction-aware format for Qwen3-Embedding.
+    """
+    client = _get_embedding_client()
+    # Qwen3-Embedding uses instruction-aware format
+    formatted_query = f"Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:{query}"
+
+    response = client.embeddings.create(
+        model=settings.vllm_embedding_model,
+        input=formatted_query
+    )
+    return np.array(response.data[0].embedding, dtype=np.float32)
+
+# Dynamic paths based on current file location
+_CURRENT_FILE = Path(__file__).resolve()
+_BACKEND_ROOT = _CURRENT_FILE.parent.parent.parent  # Navigate up to ai_chatbot_backend/
+
+# Environment Variables (using dynamic paths)
+EMBEDDING_PICKLE_PATH = _BACKEND_ROOT / "app" / "embedding"
+_DB_PATH = _BACKEND_ROOT / "db" / "metadata.db"
+DB_URI_RO = f"file:{quote(str(_DB_PATH))}?mode=ro&cache=shared"
 _local = threading.local()
 # SQLDB: whether to use SQL database or Pickle for retrieval.
 SQLDB = True
@@ -44,7 +75,7 @@ def get_reference_documents(
         timer.mark("embedding_start")
     t0 = time.time()
 
-    query_embed = {"dense_vecs": embedding_model.encode(query, prompt_name="query")}
+    query_embed = {"dense_vecs": _get_embedding(query)}
 
     # Mark embedding end
     if timer:
@@ -316,6 +347,8 @@ def _get_pickle_and_class(course: str) -> str:
         # return "roar_academy.pkl", "learning python and autonomous driving"
     elif course == "Berkeley":
         return "Berkeley"
+    elif course == "F1_racing":
+        return "F1_racing"
     else:
         raise ValueError(f"Unknown course: {course}. Please provide a valid course name.")
 
@@ -335,7 +368,7 @@ def top_k_selector(
         return {"top_docs": [], "top_reference_paths": [], "used_chunks": 0}
 
     t0 = time.time()
-    query_embed = {"dense_vecs": embedding_model.encode(message, prompt_name="query")}
+    query_embed = {"dense_vecs": _get_embedding(message)}
     print(f"Embedding time: {time.time() - t0:.2f} seconds")
 
     if SQLDB:
