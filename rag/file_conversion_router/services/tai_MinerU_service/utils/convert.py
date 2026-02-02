@@ -185,7 +185,7 @@ def parse_doc(
         pdf_path: Path,
         output_folder: Path,
         lang="en",
-        backend="pipeline",
+        backend=None,
         method="auto",
         server_url=None,
         start_page_id=0,
@@ -198,11 +198,12 @@ def parse_doc(
             Input the languages in the pdf (if known) to improve OCR accuracy.  Optional.
             Adapted only for the case where the backend is set to "pipeline"
         backend: the backend for parsing pdf:
-            pipeline: More general.
+            pipeline: More general. (default if no GPU_SERVICE_URL)
             vlm-transformers: More general.
             vlm-sglang-engine: Faster(engine).
             vlm-sglang-client: Faster(client).
-            without method specified, pipeline will be used by default.
+            remote: Use remote GPU service (auto-selected if GPU_SERVICE_URL is set)
+            If None, will check GPU_SERVICE_URL env var first.
         method: the method for parsing pdf:
             auto: Automatically determine the method based on the file type.
             txt: Use text extraction method.
@@ -217,23 +218,41 @@ def parse_doc(
         Returns:
         Path: Path to the output markdown file
     """
-
     # Ensure output folder exists
     output_folder = Path(output_folder)
 
     # Get the PDF file name without extension
     file_name = pdf_path.name
 
+    # Check for remote GPU service
+    gpu_url = os.getenv("GPU_SERVICE_URL")
+
+    # If backend not specified and GPU_SERVICE_URL is set, try remote first
+    if backend is None:
+        if gpu_url:
+            backend = "remote"
+        else:
+            backend = "pipeline"
+
+    # Handle remote GPU service
+    if backend == "remote" and gpu_url:
+        try:
+            return _parse_doc_remote(pdf_path, output_folder, lang, file_name, gpu_url)
+        except Exception as e:
+            if os.getenv("GPU_FALLBACK_LOCAL", "true").lower() == "true":
+                logger.warning(f"Remote GPU parsing failed: {e}. Falling back to local pipeline.")
+                backend = "pipeline"
+            else:
+                raise
 
     # Read the PDF file
     pdf_bytes = read_fn(pdf_path)
-    pdf_path = str(pdf_path)
-
+    pdf_path_str = str(pdf_path)
 
     # Create output directory for this specific file
     do_parse(
         output_dir=str(output_folder),
-        pdf_file_path=[pdf_path],
+        pdf_file_path=[pdf_path_str],
         pdf_bytes_list=[pdf_bytes],
         p_lang_list=[lang],
         backend=backend,
@@ -246,6 +265,47 @@ def parse_doc(
 
     # Return the path to the expected markdown file
     return output_folder / f"{file_name}.md"
+
+
+def _parse_doc_remote(pdf_path: Path, output_folder: Path, lang: str, file_name: str, gpu_url: str) -> Path:
+    """
+    Parse PDF using remote GPU service.
+
+    Args:
+        pdf_path: Path to PDF file
+        output_folder: Output folder for results
+        lang: Language code
+        file_name: Name for output files
+        gpu_url: URL of GPU service
+
+    Returns:
+        Path to output markdown file
+    """
+    from file_conversion_router.services.gpu_service_client import GPUServiceClient
+
+    logger.info(f"Using remote GPU service at {gpu_url} for PDF parsing")
+
+    client = GPUServiceClient(gpu_url)
+    result = client.parse_pdf(str(pdf_path), lang=lang)
+
+    # Ensure output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Write markdown
+    md_path = output_folder / f"{file_name}.md"
+    md_content = result.get("markdown", "")
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(md_content)
+
+    # Write middle JSON if available
+    middle_json = result.get("result")
+    if middle_json:
+        middle_json_path = output_folder / f"{file_name}_middle.json"
+        with open(middle_json_path, "w", encoding="utf-8") as f:
+            json.dump(middle_json, f, ensure_ascii=False, indent=4)
+
+    logger.info(f"Remote parsing complete. Markdown saved to: {md_path}")
+    return md_path
 
 
 def clean_unicode_surrogates(obj):

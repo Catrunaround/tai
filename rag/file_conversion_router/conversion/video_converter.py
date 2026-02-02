@@ -10,7 +10,10 @@ import os
 from openai import OpenAI
 import json
 import re
+import logging
 from textwrap import dedent
+
+logger = logging.getLogger(__name__)
 
 class VideoConverter(BaseConverter):
     def __init__(self, course_name, course_code, file_uuid: str = None):
@@ -29,16 +32,50 @@ class VideoConverter(BaseConverter):
         return wav_file_path
 
     def _video_convert_whisperx(self, audio_file_path):
-        device = "cuda"
+        """
+        Transcribe audio using WhisperX with speaker diarization.
+
+        If GPU_SERVICE_URL is set, uses remote GPU service.
+        Otherwise, runs locally with CUDA (falls back to CPU if unavailable).
+        """
+        # Check if remote GPU service is configured
+        gpu_url = os.getenv("GPU_SERVICE_URL")
+
+        if gpu_url:
+            try:
+                return self._transcribe_remote(audio_file_path, gpu_url)
+            except Exception as e:
+                if os.getenv("GPU_FALLBACK_LOCAL", "true").lower() == "true":
+                    logger.warning(f"Remote GPU transcription failed: {e}. Falling back to local.")
+                else:
+                    raise
+
+        # Local transcription
+        return self._transcribe_local(audio_file_path)
+
+    def _transcribe_remote(self, audio_file_path, gpu_url):
+        """Use remote GPU service for transcription."""
+        from file_conversion_router.services.gpu_service_client import GPUServiceClient
+
+        logger.info(f"Using remote GPU service at {gpu_url}")
+        client = GPUServiceClient(gpu_url)
+        return client.transcribe(audio_file_path, language="en", diarize=True)
+
+    def _transcribe_local(self, audio_file_path):
+        """Use local WhisperX for transcription (original implementation)."""
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Using local device: {device}")
+
         batch_size = 16
-        compute_type = "float16"
-        model = whisperx.load_model('large-v3', device='cuda', compute_type=compute_type, language="en")
+        compute_type = "float16" if device == "cuda" else "int8"
+        model = whisperx.load_model('large-v3', device=device, compute_type=compute_type, language="en")
         audio = whisperx.load_audio(audio_file_path)
         result = model.transcribe(audio, batch_size=batch_size)
         model_a, metadata = whisperx.load_align_model(language_code="en", device=device)
         result = whisperx.align(result["segments"], model_a, metadata, audio, device, return_char_alignments=False)
         diarize_model = whisperx.diarize.DiarizationPipeline(use_auth_token=True, device=device)
-        diarize_segments = diarize_model(audio)
+        diarize_segments = diarize_model(audio_file_path)
         result = whisperx.assign_word_speakers(diarize_segments, result)
         segments = []
         if "segments" in result:
