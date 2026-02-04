@@ -1,46 +1,32 @@
 """
 Composable Prompt Management System for TAI.
 
-This module provides reusable prompt fragments that can be combined
-dynamically at runtime to build final prompts for different modes.
+This module provides reusable prompt fragments and complete mode prompts
+that can be combined dynamically at runtime.
 
 Usage:
-    from app.prompts import shared, voice, chat, rag, memory
-    from app.prompts.base import compose
+    from app.prompts import modes, memory
+    from app.prompts.base import compose, PromptFragment
 
-    # Voice mode: combine shared + voice-specific prompts
-    voice_system_prompt = compose(
-        shared.TAI_IDENTITY,
-        shared.TUTOR_GUIDANCE,
-        voice.SPEECH_FRIENDLY_STYLE,
-        voice.SPEAKABLE_REFERENCES,
-    )
+    # Get complete system prompt for a mode
+    system_prompt = modes.get_system_prompt(tutor_mode=True, audio_response=False)
 
-    # Chat mode (JSON): combine shared + chat-specific prompts
-    chat_system_prompt = compose(
-        shared.TAI_IDENTITY,
-        shared.TUTOR_GUIDANCE,
-        *chat.get_format_prompts(use_structured_json=True),
-    )
+    # Use response style constants for augmented prompts
+    style = modes.CHAT_TUTOR_RESPONSE_STYLE
 
-Prompt Categories:
-    - shared: TAI identity, tutor guidance, off-topic handling (all modes)
-    - voice: Speech-friendly style, speakable references (voice mode only)
-    - chat: JSON/Markdown formats, citation rules (chat modes)
-    - rag: Query reformulation, reference handling (RAG queries)
+Prompt Modules:
+    - modes: Complete 4-mode system prompts (TEXT_CHAT_TUTOR, TEXT_CHAT_REGULAR, VOICE_TUTOR, VOICE_REGULAR)
     - memory: Synopsis compression, merge prompts (memory service)
+    - base: PromptFragment class and compose() utility
 """
 from app.prompts.base import PromptFragment, compose
-from app.prompts import shared, voice, chat, rag, memory
+from app.prompts import memory, modes
 
 __all__ = [
     # Base utilities
     "PromptFragment",
     "compose",
     # Prompt modules
-    "shared",
-    "voice",
-    "chat",
-    "rag",
     "memory",
+    "modes",
 ]

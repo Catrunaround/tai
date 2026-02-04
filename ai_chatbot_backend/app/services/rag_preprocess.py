@@ -8,10 +8,21 @@ from openai import OpenAI, AsyncOpenAI
 from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, get_file_related_documents
 from app.services.rag_postprocess import extract_channels
 from app.services.request_timer import RequestTimer
-from app.prompts import shared, voice, chat
-from app.prompts import rag as rag_prompts
-from app.prompts.base import compose, PromptFragment
+from app.prompts import modes
 from app.config import settings
+
+# Query reformulator prompt (inlined from rag.py)
+_QUERY_REFORMULATOR_PROMPT = (
+    "You are a query reformulator for a RAG system. "
+    "Given the user message and the memory synopsis of the current conversation as well as the file context if any, "
+    "rewrite the latest user request as a single, "
+    "self-contained question for document retrieval. "
+    "Resolve pronouns and references using context, include relevant constraints "
+    "(dates, versions, scope), and avoid adding facts not in the history. "
+    "Return only the rewritten query as question in plain text—no quotes, no extra text."
+    "# Valid channels: analysis, commentary, final. Channel must be included for every message."
+    "Calls to these tools must go to the commentary channel: 'functions'.<|end|>"
+)
 
 
 async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine: Any, file_sections: Any = None, excerpt: Any = None) -> str:
@@ -21,7 +32,7 @@ async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine:
     Returns plain text with no quotes or extra formatting.
     """
     # Prepare the chat history for the model
-    system_prompt = str(rag_prompts.QUERY_REFORMULATOR)
+    system_prompt = _QUERY_REFORMULATOR_PROMPT
 
     # If no context is provided, return the original user message
     if not memory_synopsis and not file_sections and not excerpt:
@@ -140,54 +151,22 @@ def build_augmented_prompt(
             )
             reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
 
-    # Create response and reference styles based on 4-mode system
-    if audio_response:
-        if tutor_mode:
-            # Voice Tutor Mode: JSON format with unreadable property
-            response_style = str(voice.VOICE_TUTOR_FORMAT)
-            reference_style = str(chat.TUTOR_JSON_CITATION_RULES)
-        else:
-            # Voice Regular Mode: plain speakable text
-            response_style = str(voice.VOICE_REGULAR_STYLE)
-            reference_style = str(voice.SPEAKABLE_REFERENCES)
-    else:
-        if tutor_mode:
-            # Chat Tutor Mode: JSON with citations-first
-            response_style = str(chat.JSON_RESPONSE_STYLE)
-            reference_style = str(chat.TUTOR_JSON_CITATION_RULES)
-        else:
-            # Chat Regular Mode: plain markdown
-            response_style = str(chat.REGULAR_MARKDOWN_STYLE)
-            reference_style = str(chat.MARKDOWN_CITATION_RULES)
-
-    # Select appropriate tutor prompt based on mode
-    tutor_prompt = rag_prompts.TUTOR_ROLE_ENHANCED if tutor_mode else rag_prompts.REFERENCE_REVIEW
+    # Get mode configuration - single source of truth
+    config = modes.get_mode_config(tutor_mode, audio_response)
 
     # Create modified message based on whether documents were inserted
-
     if not insert_document or n == 0:
         print("[INFO] No relevant documents found above the similarity threshold.")
-        # Build system message for no-refs scenario using composable prompts
-        no_refs_course_context = rag_prompts.build_no_refs_course_context(course, class_name)
-        system_add_message = compose(
-            PromptFragment(content=f"\n{response_style}"),
-            rag_prompts.NO_REFS_GUIDANCE,
-            no_refs_course_context,
-            separator="\n\n"
+        # Use pre-assembled addendum for no-refs scenario
+        system_add_message = config.system_addendum_no_refs.format(
+            course=course, class_name=class_name
         )
         modified_message = ""
     else:
         print("[INFO] Relevant documents found and inserted into the prompt.")
-        # Build system message with appropriate tutor role using composable prompts
-        course_context = rag_prompts.build_course_context(course, class_name)
-        system_add_message = compose(
-            PromptFragment(content=f"\n{response_style}"),
-            tutor_prompt,
-            PromptFragment(content=reference_style),
-            rag_prompts.EXCLUDE_IRRELEVANT_REFS,
-            course_context,
-            rag_prompts.CLARIFY_BEFORE_REFUSING,
-            separator="\n\n"
+        # Use pre-assembled addendum for refs-found scenario
+        system_add_message = config.system_addendum_with_refs.format(
+            course=course, class_name=class_name
         )
         modified_message = f"{insert_document}\n---\n"
     # Append user instruction to the modified message

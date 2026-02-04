@@ -15,8 +15,7 @@ from app.services.rag_postprocess import (
     GUIDED_VOICE_TUTOR_BLOCKS, VOICE_TUTOR_OPENAI_FORMAT
 )
 from app.services.request_timer import RequestTimer
-from app.prompts import shared, chat, voice
-from app.prompts.base import compose
+from app.prompts.modes import get_system_prompt
 from app.config import settings
 from app.dependencies.model import LLM_MODEL_ID
 
@@ -229,7 +228,7 @@ def format_chat_msg(
     messages: List[Message],
     tutor_mode: bool = True,
     audio_response: bool = False,
-    use_structured_json: bool = False
+    use_structured_json: bool = False  # Kept for API compatibility, prompts now include full instructions
 ) -> List[Message]:
     """
     Format a conversation by prepending an initial system message based on the 4-mode system.
@@ -244,54 +243,13 @@ def format_chat_msg(
         messages: List of chat messages
         tutor_mode: If True, use tutor behavior (Bloom taxonomy, hints-first)
         audio_response: If True, output will be converted to speech
-        use_structured_json: If True, use simplified prompt (schema enforces structure).
-                            If False, use detailed prompt-based JSON instructions.
+        use_structured_json: Kept for API compatibility (prompts now include full JSON instructions)
     """
     response: List[Message] = []
 
-    # Build system message using composable prompts
-    # Always start with shared identity and language matching
-    fragments = [
-        shared.TAI_IDENTITY,
-        shared.LANGUAGE_MATCHING,
-    ]
-
-    if audio_response:
-        if tutor_mode:
-            # Voice Tutor Mode: JSON with unreadable property
-            fragments.extend([
-                shared.TUTOR_GUIDANCE,
-                voice.VOICE_TUTOR_FORMAT,
-                voice.VOICE_TUTOR_UNREADABLE_RULES,
-                shared.OFF_TOPIC_HANDLING,
-            ])
-        else:
-            # Voice Regular Mode: plain speakable text
-            fragments.extend([
-                shared.REGULAR_MODE_GUIDANCE,
-                voice.VOICE_REGULAR_STYLE,
-                shared.OFF_TOPIC_HANDLING,
-            ])
-    else:
-        if tutor_mode:
-            # Chat Tutor Mode: JSON with tutor guidance
-            fragments.extend([
-                shared.TUTOR_GUIDANCE,
-                shared.OFF_TOPIC_HANDLING,
-            ])
-            # Add JSON format prompts (structured or prompt-based)
-            format_prompts = chat.get_format_prompts(use_structured_json)
-            fragments.extend(format_prompts)
-            fragments.append(chat.TUTOR_JSON_CITATION_RULES)
-        else:
-            # Chat Regular Mode: plain markdown
-            fragments.extend([
-                shared.REGULAR_MODE_GUIDANCE,
-                chat.REGULAR_MARKDOWN_STYLE,
-                shared.OFF_TOPIC_HANDLING,
-            ])
-
-    system_message = compose(*fragments, separator="\n")
+    # Get the complete system prompt for this mode
+    # All prompts are now in app/prompts/modes.py for easy debugging
+    system_message = get_system_prompt(tutor_mode=tutor_mode, audio_response=audio_response)
 
     response.append(Message(role="system", content=system_message))
     for message in messages:
