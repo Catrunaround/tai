@@ -1,6 +1,7 @@
 import json
 from openai import OpenAI, AsyncOpenAI
 from app.dependencies.remote_model import RemoteModelClient
+from app.dependencies.openai_model import OpenAIModelClient
 from app.config import settings
 
 # Global variable to store the loaded clients (singleton pattern)
@@ -41,6 +42,18 @@ def get_remote_model_pipeline():
     Tokenization is performed locally to maintain a consistent interface.
     """
     return RemoteModelClient(url=settings.remote_model_url)
+
+
+def get_openai_model_pipeline():
+    """Returns an OpenAI API client for inference.
+
+    Uses OpenAI's native structured output support for guaranteed valid JSON.
+    Requires OPENAI_API_KEY and optionally OPENAI_MODEL in environment.
+    """
+    return OpenAIModelClient(
+        api_key=settings.openai_api_key,
+        model=settings.openai_model
+    )
 
 
 def get_mock_model_pipeline():
@@ -105,6 +118,13 @@ def initialize_model_engine():
         print("🌐 Setting up remote model pipeline...")
         _model_engine = get_remote_model_pipeline()
         print("✅ Remote model pipeline setup successfully!")
+    elif mode == "openai":
+        print("🌐 Setting up OpenAI model pipeline...")
+        _model_engine = get_openai_model_pipeline()
+        print(f"✅ OpenAI model pipeline setup successfully! (model: {settings.openai_model})")
+        print("📚 Loading local embedding engine for RAG...")
+        _embedding_engine = get_local_embedding_engine()
+        print("✅ Local embedding engine loaded successfully!")
     elif mode == "mock":
         print("🎭 Setting up mock model pipeline...")
         _model_engine = get_mock_model_pipeline()

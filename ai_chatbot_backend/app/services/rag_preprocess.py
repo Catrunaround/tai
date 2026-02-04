@@ -6,7 +6,23 @@ from uuid import UUID
 from openai import OpenAI, AsyncOpenAI
 # Local libraries
 from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, get_file_related_documents
+from app.services.rag_postprocess import extract_channels
+from app.services.request_timer import RequestTimer
+from app.prompts import modes
 from app.config import settings
+
+# Query reformulator prompt (inlined from rag.py)
+_QUERY_REFORMULATOR_PROMPT = (
+    "You are a query reformulator for a RAG system. "
+    "Given the user message and the memory synopsis of the current conversation as well as the file context if any, "
+    "rewrite the latest user request as a single, "
+    "self-contained question for document retrieval. "
+    "Resolve pronouns and references using context, include relevant constraints "
+    "(dates, versions, scope), and avoid adding facts not in the history. "
+    "Return only the rewritten query as question in plain text—no quotes, no extra text."
+    "# Valid channels: analysis, commentary, final. Channel must be included for every message."
+    "Calls to these tools must go to the commentary channel: 'functions'.<|end|>"
+)
 
 
 async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine: Any, file_sections: Any = None, excerpt: Any = None) -> str:
@@ -16,17 +32,7 @@ async def build_retrieval_query(user_message: str, memory_synopsis: Any, engine:
     Returns plain text with no quotes or extra formatting.
     """
     # Prepare the chat history for the model
-    system_prompt = (
-        "You are a query reformulator for a RAG system. "
-        "Given the user message and the memory synopsis of the current conversation as well as the file context if any, "
-        "rewrite the latest user request as a single, "
-        "self-contained question for document retrieval. "
-        "Resolve pronouns and references using context, include relevant constraints "
-        "(dates, versions, scope), and avoid adding facts not in the history. "
-        "Return only the rewritten query as question in plain text—no quotes, no extra text."
-        "# Valid channels: analysis, commentary, final. Channel must be included for every message."
-        "Calls to these tools must go to the commentary channel: 'functions'.<|end|>"
-    )
+    system_prompt = _QUERY_REFORMULATOR_PROMPT
 
     # If no context is provided, return the original user message
     if not memory_synopsis and not file_sections and not excerpt:
@@ -85,13 +91,23 @@ def build_augmented_prompt(
         reference_list: List[Dict] = None,
         problem_content: Optional[str] = None,
         answer_content: Optional[str] = None,
-        audio_response: bool = False
+        audio_response: bool = False,
+        tutor_mode: bool = True,
+        timer: Optional[RequestTimer] = None
 ) -> Tuple[str, List[Dict], str]:
     """
     Build an augmented prompt by retrieving reference documents.
+
+    4-Mode System:
+    - Chat Tutor (tutor_mode=True, audio_response=False): JSON with citations-first
+    - Chat Regular (tutor_mode=False, audio_response=False): Plain Markdown
+    - Voice Tutor (tutor_mode=True, audio_response=True): JSON with unreadable property
+    - Voice Regular (tutor_mode=False, audio_response=True): Plain speakable text
+
     Returns:
       - modified_message: the augmented instruction prompt.
       - reference_list: list of reference URLs for JSON output.
+      - system_add_message: additional system message content.
     """
     # Practice mode has its own message format
     if answer_content and problem_content:
@@ -114,7 +130,7 @@ def build_augmented_prompt(
     (
         top_chunk_uuids, top_docs, top_urls, similarity_scores, top_files, top_refs, top_titles,
         top_file_uuids, top_chunk_idxs
-    ), class_name = get_reference_documents(query_message, course, top_k=top_k)
+    ), class_name = get_reference_documents(query_message, course, top_k=top_k, timer=timer)
     # Prepare the insert document and reference list
     insert_document = ""
     reference_list = reference_list or []
@@ -133,78 +149,26 @@ def build_augmented_prompt(
                 f"Topic Path of chunk in file to tell the topic of chunk: {topic_path}\n"
                 f'Document: {top_docs[i]}\n\n'
             )
-            reference_list.append([topic_path, url, file_path, file_uuid,chunk_index])
-    # Create response and reference styles based on audio mode.
-    if not audio_response:
-        response_style = (
-            f"Answer the instruction thoroughly with a well-structured markdown format answer (do not add '```markdown'). "
-            f"Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
-            f"No references at the end."
-        )
-        # "[Reference: a; Quote: 'xxx to xxx']"
-        reference_style = (
-            f"\nALWAYS: Refer to specific reference numbers inline using [Reference: a,b] style!!! Do not use other style like refs, 【】, Reference: [n], > *Reference: n*, [Reference: a-b]  or (reference n)!!!"
-            f"\nDo not list references at the end. "
-        )
-    else:
-        response_style = """
-        STYLE:
-        Use a speaker-friendly tone. Try to end every sentence with a period '.'. ALWAYS: Avoid code block, Markdown formatting or math equation!!! No references at the end or listed without telling usage.
-        Make the first sentence short and engaging. If no instruction is given, explain that you did not hear any instruction. Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed.
-        Do not use symbols that are not readable in speech, such as (, ), [, ], {, }, <, >, *, #, -, !, $, %, ^, &, =, +, \, /, ~, `, etc. In this way, avoid code, Markdown formatting or math equation!!!
-        """
-        reference_style = (
-            "\nREFERENCE USAGE:"
-            f"\nMention specific reference numbers inline when that part of the answer is refer to some reference. Discuss what the reference is, such as a textbook or sth, and what the reference is about. Quote the reference if needed. "
-            f"\nALWAYS: Do not mention references in a unreadable format like refs, 【】, Reference: [n], > *Reference: n* or (reference n)!!! Those are not understandable since the output is going to be converted to speech. "
-        )
-    # Create modified message based on whether documents were inserted
+            reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
 
+    # Get mode configuration - single source of truth
+    config = modes.get_mode_config(tutor_mode, audio_response)
+
+    # Create modified message based on whether documents were inserted
     if not insert_document or n == 0:
         print("[INFO] No relevant documents found above the similarity threshold.")
-        system_add_message = (
-            f"\n{response_style}"
-            f"If the question is a complex question, provide hints, explanations, "
-            f"or step-by-step guidance instead of a direct answer. "
-            f"If you are unsure after making a reasonable effort, "
-            f"explain that there is no data in the knowledge base for the response. "
-            f"Only refuse if the question is clearly unrelated to any topic in "
-            f"{course}: {class_name} and is not a general, reasonable query. "
-            f"If the intent is unclear, ask clarifying questions rather than refusing."
+        # Use pre-assembled addendum for no-refs scenario
+        system_add_message = config.system_addendum_no_refs.format(
+            course=course, class_name=class_name
         )
-        modified_message = (
-            f""
-        )
+        modified_message = ""
     else:
         print("[INFO] Relevant documents found and inserted into the prompt.")
-        system_add_message =(
-            f"\n{response_style}"
-            f"Review the reference documents, considering their Directory Path (original file location), "
-            f"Topic Path (section or title it belongs to), and Document content. "
-            f"Select only the most relevant references to answer the instruction thoroughly. "
-            f"Role: adaptive and encouraging tutor using Bloom taxonomy and provided references, don't give out answer."
-            f"always praise curiosity + link to prior knowledge; explain only core ideas from refs with one"
-            f"Quickly identify goal = Understand / Apply–Analyze / Evaluate–Create."
-            f"If Understand → explanation + clear example; headlines and keep concise and clear"
-            f"then ask if the user wants more explanation, such as analogies, counterexamples, or deep exploration \n\n"
-            f"If Apply–Analyze → clarify what's asked, what concepts and prereqs are involved; ask if they want hints "
-            f"or steps; wait for attempt; then outline step-by-step guidance using refs, no final answer.\n\n"
-            f"If Evaluate–Create → unpack the problem and key concepts; ask for their approach first; then guide "
-            f"reflection with criteria (correctness, completeness, trade-offs); compare views, note assumptions, "
-            f"outline structure if needed, never a full solution.\n\n"
-            f"always ground reasoning in the references and note how each supports the step."
-            f"Prefer hints and reflection; end each turn by inviting the next action."
-            f"{reference_style}"
-            f"Exclude and avoid explaining irrelevant references. "
-            f"If, after reasonable effort, no relevant information is found, "
-            f"state that there is no data in the knowledge base for the response. "
-            f"Refuse only if the question is clearly unrelated to any topic in {course}: {class_name}, "
-            f"is not a general query, and has no link to the provided references. "
-            f"If intent is unclear, ask clarifying questions before refusing."
+        # Use pre-assembled addendum for refs-found scenario
+        system_add_message = config.system_addendum_with_refs.format(
+            course=course, class_name=class_name
         )
-        modified_message = (
-            f"{insert_document}\n---\n"
-        )
+        modified_message = f"{insert_document}\n---\n"
     # Append user instruction to the modified message
     if not (answer_content and problem_content):
         modified_message += f"Instruction: {user_message}"
@@ -215,9 +179,9 @@ def build_augmented_prompt(
 
 
 def build_file_augmented_context(
-    file_uuid: UUID,
-    selected_text: Optional[str] = None,
-    index: Optional[float] = None,
+        file_uuid: UUID,
+        selected_text: Optional[str] = None,
+        index: Optional[float] = None,
 ) -> Tuple[str, str, str, List[Dict]]:
     """
     Build an augmented context for file-based chat by retrieving reference documents.

@@ -1,5 +1,5 @@
 from app.core.models.chat_completion import *
-from typing import AsyncIterator, List, Any, Dict
+from typing import AsyncIterator, List, Any, Dict, Optional, TYPE_CHECKING
 import re
 import os
 import base64
@@ -8,40 +8,41 @@ import soundfile as sf
 import numpy as np
 from pathlib import Path
 from openai import OpenAI
+from app.services.rag_postprocess import extract_channels, extract_answers
 from app.config import settings
+
+if TYPE_CHECKING:
+    from app.services.request_timer import RequestTimer
+
 
 
 async def chat_stream_parser(
-        stream: AsyncIterator,
-        reference_list: List[str],
-        audio: bool = False,
-        messages: List[Message] = None,
-        audio_text: str = None,
-        engine: Any = None,
-        old_sid: str = "",
-        course_code: str = None,
-        debug: bool = False
+        stream: AsyncIterator, reference_list: List[str], audio: bool = False, messages: List[Message] = None,
+        audio_text: str = None, engine: Any = None, old_sid: str = "", course_code: str = None, debug: bool = False,
+        tutor_mode: bool = True, timer: Optional["RequestTimer"] = None
 ) -> AsyncIterator[str]:
     """
-    Parse the streaming response from the vLLM chat model with reasoning support.
+    Parse the streaming response from the chat model and yield deltas.
 
-    Handles vLLM's OpenAI-compatible streaming format where:
-    - delta.reasoning_content: Contains reasoning/thinking content (analysis channel)
-    - delta.content: Contains final response content (final channel)
+    4-Mode System:
+    - Chat Tutor (tutor_mode=True, audio=False): Extract from JSON blocks
+    - Chat Regular (tutor_mode=False, audio=False): Pass through markdown directly
+    - Voice Tutor (tutor_mode=True, audio=True): Extract from JSON, handle unreadable separately
+    - Voice Regular (tutor_mode=False, audio=True): Pass through speakable text directly
 
-    The vLLM server with --reasoning-parser qwen3 flag separates these automatically.
+    Args:
+        tutor_mode: If True, parse JSON output. If False, pass through text directly.
     """
+    # Derive json_output from tutor_mode for backward compatibility
+    json_output = tutor_mode
     if audio_text:
         yield sse(AudioTranscript(text=audio_text))
-
-    # Accumulated content for each channel
-    accumulated_analysis = ""
-    accumulated_final = ""
-
-    # Tracking for delta calculation and SSE sequencing
+    previous_channels = {}
+    first_token_marked = False  # Track if first token has been marked
+    previous_answer_text = ""  # Track previous answer text for json_output streaming
+    previous_index = -2
     text_seq = 0
     voice_seq = 0
-    previous_index = -2
     audio_messages = []
 
     # Guard against streaming partial reference patterns
@@ -61,119 +62,200 @@ async def chat_stream_parser(
         \[\s*\Z                              # Just '[' at end
     )
     """, re.VERBOSE)
-
-    async for chunk in stream:
-        if not chunk.choices:
+    async for output in stream:
+        text = output.outputs[0].text
+        channels = extract_channels(text)
+        # print(channels)
+        if not channels:
             continue
+        chunks = {c: channels[c][len(previous_channels.get(c, "")):] for c in channels if
+                  channels[c] != previous_channels.get(c, "")}
+        if not chunks:
+            continue
+        continue_flag = False
+        for channel in chunks:
+            chunk = chunks[channel]
+            if not chunk.strip():
+                continue
+            if channel == "final" and PARTIAL_TAIL_GUARD.search(channels[channel][-100:]):
+                # if PARTIAL_TAIL_GUARD.search(channels[channel][-50:]):
+                #     print("[DEBUG] Skipping partial reference chunk:" + repr(channels[channel][-50:]))
+                continue_flag = True
+                break
+            # For json_output, extract only answer text from 'final' channel, hiding references
+            if json_output and channel == 'final':
+                current_answer_text = extract_answers(channels['final'])
+                chunk = current_answer_text[len(previous_answer_text):]
+                previous_answer_text = current_answer_text
+                if not chunk.strip():
+                    continue
+            # Mark first token timing
+            if timer and not first_token_marked:
+                timer.mark("first_token")
+                first_token_marked = True
+            yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk))
+            text_seq += 1
+            ####### print the plain text output for debugging ########
+            # print(chunk, end="")
+        if continue_flag:
+            continue
+        previous_channels = channels
+        if audio and 'final' in channels:
+            last_newline_index = channels['final'].rfind('. ')
+            if last_newline_index > previous_index + 2:
+                audio_text = channels['final'][previous_index + 2:last_newline_index + 2]
+                previous_index = last_newline_index
+                # replace all the consecutive \n with space no matter how many \n
+                # audio_text = re.sub(r'\n+', ' ', audio_text)
+                if audio_text.strip() == "":
+                    continue
+                messages_to_send = audio_text.split('. ')
+                for msg in messages_to_send:
+                    if msg.strip():
+                        audio_messages.append({"role": "user", "content": msg + '. '})
+                        print("\n[INFO] Audio text:")
+                        print(msg + '. ')
+                        speaker_name = get_speaker_name(course_code)
+                        audio_iterator = audio_generator(audio_messages, stream=True, speaker_name=speaker_name)
+                        audio_bytes_io = io.BytesIO()
+                        async for data in audio_iterator:
+                            yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec()))
+                            voice_seq += 1
+                            audio_bytes = base64.b64decode(data)
+                            audio_bytes_io.write(audio_bytes)
+                        audio_data = np.frombuffer(audio_bytes_io.getvalue(), dtype=np.int16)
+                        audio2_base64 = convert_audio_to_base64(audio_data, 24000, target_format="wav")
+                        audio_messages.append({
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "input_audio",
+                                    "input_audio": {
+                                        "data": audio2_base64,
+                                        "format": "wav",
+                                    },
+                                }
+                            ],
+                        })
+    else:
+        chunks = {c: channels[c][len(previous_channels.get(c, "")):] for c in channels if
+                  channels[c] != previous_channels.get(c, "")}
+        for channel in chunks:
+            chunk = chunks[channel]
+            if not chunk.strip():
+                continue
+            yield sse(ResponseDelta(seq=text_seq, text_channel=channel, text=chunk))
+            text_seq += 1
+            print(chunk, end="")
+        if audio and 'final' in channels:
+            audio_text = channels['final'][previous_index + 2:]
+            # replace all the consecutive \n with space no matter how many \n
+            # yield sse(ResponseDelta(seq=text_seq, text=audio_text)); text_seq += 1
+            if audio_text.strip():
+                messages_to_send = audio_text.split('. ')
+                for msg in messages_to_send:
+                    if msg.strip():
+                        audio_messages.append({"role": "user", "content": msg + '. '})
+                        print("\n[INFO] Audio text:")
+                        print(msg + '. ')
+                        speaker_name = get_speaker_name(course_code)
+                        audio_iterator = audio_generator(audio_messages, stream=True, speaker_name=speaker_name)
+                        audio_bytes_io = io.BytesIO()
+                        async for data in audio_iterator:
+                            yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec(),
+                                                    speaker_name=speaker_name))
+                            voice_seq += 1
+                            audio_bytes = base64.b64decode(data)
+                            audio_bytes_io.write(audio_bytes)
+                        audio_data = np.frombuffer(audio_bytes_io.getvalue(), dtype=np.int16)
+                        audio2_base64 = convert_audio_to_base64(audio_data, 24000, target_format="wav")
+                        audio_messages.append({
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "input_audio",
+                                    "input_audio": {
+                                        "data": audio2_base64,
+                                        "format": "wav",
+                                    },
+                                }
+                            ],
+                        })
 
-        delta = chunk.choices[0].delta
+    ####### Print the complete original JSON for debugging ######
+    if json_output and 'final' in channels:
+        print("[DEBUG] Complete Original JSON Output:")
+        print(channels['final'])
 
-        # Extract reasoning_content and content using getattr for safety
-        # vLLM may use 'reasoning_content' or 'reasoning' depending on version
-        reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
-        content = getattr(delta, "content", None)
+    # Extract mentioned references based on output format
+    mentioned_references = set()
 
-        # Process reasoning content (analysis channel)
-        if reasoning:
-            accumulated_analysis += reasoning
-            # Check for partial reference patterns before yielding
-            if not PARTIAL_TAIL_GUARD.search(accumulated_analysis[-100:]):
-                yield sse(ResponseDelta(seq=text_seq, text_channel="analysis", text=reasoning))
-                text_seq += 1
-                if debug:
-                    print(f"[analysis] {reasoning}", end="")
+    if json_output:
+        # Parse JSON to extract references from array structure
+        try:
+            import json
+            final_text = channels['final'].strip()
+            # Remove markdown code blocks if present
+            if final_text.startswith('```'):
+                final_text = re.sub(r'^```(?:json)?\s*\n?', '', final_text)
+                final_text = re.sub(r'\n?```\s*$', '', final_text)
 
-        # Process final content
-        if content:
-            accumulated_final += content
-            # Check for partial reference patterns before yielding
-            if not PARTIAL_TAIL_GUARD.search(accumulated_final[-100:]):
-                yield sse(ResponseDelta(seq=text_seq, text_channel="final", text=content))
-                text_seq += 1
-                if debug:
-                    print(f"[final] {content}", end="")
-
-                # Handle audio TTS for final channel if enabled
-                if audio:
-                    last_sentence_end = accumulated_final.rfind('. ')
-                    if last_sentence_end > previous_index + 2:
-                        audio_text_chunk = accumulated_final[previous_index + 2:last_sentence_end + 2]
-                        previous_index = last_sentence_end
-
-                        if audio_text_chunk.strip():
-                            messages_to_send = audio_text_chunk.split('. ')
-                            for msg in messages_to_send:
-                                if msg.strip():
-                                    audio_messages.append({"role": "user", "content": msg + '. '})
-                                    print(f"\n[INFO] Audio text: {msg}. ")
-                                    speaker_name = get_speaker_name(course_code)
-                                    audio_iterator = audio_generator(audio_messages, stream=True, speaker_name=speaker_name)
-                                    audio_bytes_io = io.BytesIO()
-                                    async for data in audio_iterator:
-                                        yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec()))
-                                        voice_seq += 1
-                                        audio_bytes = base64.b64decode(data)
-                                        audio_bytes_io.write(audio_bytes)
-                                    audio_data = np.frombuffer(audio_bytes_io.getvalue(), dtype=np.int16)
-                                    audio2_base64 = convert_audio_to_base64(audio_data, 24000, target_format="wav")
-                                    audio_messages.append({
-                                        "role": "assistant",
-                                        "content": [
-                                            {
-                                                "type": "input_audio",
-                                                "input_audio": {
-                                                    "data": audio2_base64,
-                                                    "format": "wav",
-                                                },
-                                            }
-                                        ],
-                                    })
-
-    # Handle any remaining audio at end of stream
-    if audio and accumulated_final:
-        remaining_audio = accumulated_final[previous_index + 2:]
-        if remaining_audio.strip():
-            messages_to_send = remaining_audio.split('. ')
-            for msg in messages_to_send:
-                if msg.strip():
-                    audio_messages.append({"role": "user", "content": msg + '. '})
-                    print(f"\n[INFO] Audio text: {msg}. ")
-                    speaker_name = get_speaker_name(course_code)
-                    audio_iterator = audio_generator(audio_messages, stream=True, speaker_name=speaker_name)
-                    audio_bytes_io = io.BytesIO()
-                    async for data in audio_iterator:
-                        yield sse(ResponseDelta(seq=voice_seq, audio_b64=data, audio_spec=AudioSpec(), speaker_name=speaker_name))
-                        voice_seq += 1
-                        audio_bytes = base64.b64decode(data)
-                        audio_bytes_io.write(audio_bytes)
-                    audio_data = np.frombuffer(audio_bytes_io.getvalue(), dtype=np.int16)
-                    audio2_base64 = convert_audio_to_base64(audio_data, 24000, target_format="wav")
-                    audio_messages.append({
-                        "role": "assistant",
-                        "content": [
-                            {
-                                "type": "input_audio",
-                                "input_audio": {
-                                    "data": audio2_base64,
-                                    "format": "wav",
-                                },
-                            }
-                        ],
-                    })
-
-    # Extract and yield references from the final content
-    pattern = re.compile(
-        r'(?:\[Reference:\s*([\d,\s]+)\]'
-        r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
-        re.IGNORECASE
-    )
-
-    mentioned_references = {
-        int(n)
-        for m in pattern.finditer(accumulated_final)
-        for n in re.findall(r'\d+', m.group(1) or m.group(2))
-    }
-    print(f"\n[INFO] Mentioned references: {mentioned_references}")
+            json_data = json.loads(final_text)
+            # New array structure: [{"reference": {"number": 1, ...}, "answer": "..."}, ...]
+            if isinstance(json_data, list):
+                for segment in json_data:
+                    ref = segment.get('reference')
+                    if ref is not None and isinstance(ref, dict) and 'number' in ref:
+                        mentioned_references.add(int(ref['number']))
+            # Blocks structure: {"blocks": [{"type": "...", "markdown_content": "...", "citations": [{"id": 1, ...}]}]}
+            elif isinstance(json_data, dict) and isinstance(json_data.get("blocks"), list):
+                for block in json_data.get("blocks", []):
+                    if not isinstance(block, dict):
+                        continue
+                    citations = block.get("citations", [])
+                    if not isinstance(citations, list):
+                        continue
+                    for citation in citations:
+                        if not isinstance(citation, dict):
+                            continue
+                        if "id" not in citation:
+                            continue
+                        try:
+                            mentioned_references.add(int(citation["id"]))
+                        except (TypeError, ValueError):
+                            continue
+            # Fallback for old structure
+            elif 'mentioned_contexts' in json_data and isinstance(json_data['mentioned_contexts'], list):
+                for context in json_data['mentioned_contexts']:
+                    if 'reference' in context:
+                        mentioned_references.add(int(context['reference']))
+            print(f"\n[INFO] Mentioned references from JSON: {mentioned_references}")
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            print(f"\n[WARNING] Failed to parse JSON output, falling back to regex: {e}")
+            # Fall back to regex pattern if JSON parsing fails
+            pattern = re.compile(
+                r'(?:\[Reference:\s*([\d,\s]+)\]'
+                r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
+                re.IGNORECASE
+            )
+            mentioned_references = {
+                int(n)
+                for m in pattern.finditer(channels['final'])
+                for n in re.findall(r'\d+', m.group(1) or m.group(2))
+            }
+    else:
+        # Original regex-based extraction for markdown format
+        pattern = re.compile(
+            r'(?:\[Reference:\s*([\d,\s]+)\]'
+            r'|\breference\s+(\d+(?:(?:\s*,\s*|\s*(?:and|&)\s*)\d+)*))',
+            re.IGNORECASE
+        )
+        mentioned_references = {
+            int(n)
+            for m in pattern.finditer(channels['final'])
+            for n in re.findall(r'\d+', m.group(1) or m.group(2))
+        }
+        print(f"\n[INFO] Mentioned references: {mentioned_references}")
 
     references = []
     max_idx = len(reference_list)
@@ -190,6 +272,11 @@ async def chat_stream_parser(
             ))
     if references:
         yield sse(ResponseReference(references=references))
+
+    # Print timing report at end of stream
+    if timer:
+        timer.mark("stream_complete")
+        print(timer.report())
 
     yield sse(Done())
     yield "data: [DONE]\n\n"  # Final done message for SSE clients
@@ -214,6 +301,7 @@ def format_audio_text_message(audio_text: str) -> List[Dict]:
     """
     Format the audio text message into the expected structure for the chat model.
     """
+    # remove all the [] in text
     audio_text = re.sub(r'\[.*?\]', '', audio_text).replace('\n', ' ').strip()
     print(f"[INFO] Audio text after cleaning: {audio_text}")
     return [{"role": "user", "content": audio_text}]
@@ -229,7 +317,7 @@ def get_speaker_name(course_code: str) -> str:
 
 
 async def audio_generator(messages: List[Dict], stream: bool = True, speaker_name: str = None
-) -> AsyncIterator[str]:
+                          ) -> AsyncIterator[str]:
     """
     Parse the streaming response from the audio model and yield deltas.
     Uses vLLM TTS server configured via VLLM_TTS_URL environment variable.
