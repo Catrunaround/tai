@@ -1,9 +1,6 @@
 # Standard python libraries
-import json
-import re
-import ast
 import time
-from typing import Any, Optional, Tuple, List, Union
+from typing import Any, Optional, Tuple, List
 from dataclasses import dataclass
 # Third-party libraries
 from openai import OpenAI, AsyncOpenAI
@@ -11,13 +8,12 @@ from openai import OpenAI, AsyncOpenAI
 from app.core.models.chat_completion import Message, UserFocus
 from app.services.rag_preprocess import build_retrieval_query, build_augmented_prompt, build_file_augmented_context
 from app.services.rag_postprocess import (
-    GUIDED_RESPONSE_BLOCKS, RESPONSE_BLOCKS_OPENAI_FORMAT,
-    GUIDED_VOICE_TUTOR_BLOCKS, VOICE_TUTOR_OPENAI_FORMAT
+    RESPONSE_BLOCKS_OPENAI_FORMAT,
+    VOICE_TUTOR_OPENAI_FORMAT
 )
 from app.services.request_timer import RequestTimer
 from app.prompts.modes import get_system_prompt
 from app.config import settings
-from app.dependencies.model import LLM_MODEL_ID
 
 # Sampling parameters for generation (used with OpenAI API)
 SAMPLING_PARAMS = {
@@ -45,8 +41,7 @@ async def generate_chat_response(
         sid: Optional[str] = None,
 
         tutor_mode: bool = True,  # Enable tutor mode (Bloom taxonomy, hints-first)
-        json_output: bool = True,  # Kept for backward compatibility, derived from tutor_mode
-        use_structured_json: bool = True,  # New option: use response_format schema instead of prompt-based JSON
+        use_structured_json: bool = True,  # Use response_format schema for guaranteed valid JSON
         timer: Optional[RequestTimer] = None  # Optional timer for tracking latency
 ) -> Tuple[Any, List[str | Any], Optional[RequestTimer]]:
     """
@@ -60,11 +55,8 @@ async def generate_chat_response(
     - Voice Regular (tutor_mode=False, audio_response=True): Plain speakable text
 
     Args:
-
         tutor_mode: If True, use tutor behavior (Bloom taxonomy, hints-first, JSON output)
-        json_output: Kept for backward compatibility. Derived from tutor_mode if not explicitly set.
-        use_structured_json: If True AND using JSON output, use response_format schema
-                            for guaranteed valid JSON. If False, use prompt-based JSON instructions.
+        use_structured_json: If True, use response_format schema for guaranteed valid JSON
         timer: Optional RequestTimer for tracking latency milestones
     """
 
@@ -96,8 +88,7 @@ async def generate_chat_response(
     messages = format_chat_msg(
         messages,
         tutor_mode=tutor_mode,
-        audio_response=audio_response,
-        use_structured_json=use_structured_json
+        audio_response=audio_response
     )
 
     user_message = messages[-1].content
@@ -116,7 +107,7 @@ async def generate_chat_response(
         index = user_focus.chunk_index
 
     if file_uuid:
-        augmented_context, file_content, filechat_focused_chunk, filechat_file_sections = build_file_augmented_context(
+        augmented_context, _, filechat_focused_chunk, filechat_file_sections = build_file_augmented_context(
             file_uuid, selected_text, index)
         messages[-1].content = (
             f"{augmented_context}"
@@ -247,8 +238,7 @@ async def _generate_streaming_response(messages: List[Message], client: Any):
 def format_chat_msg(
     messages: List[Message],
     tutor_mode: bool = True,
-    audio_response: bool = False,
-    use_structured_json: bool = False  # Kept for API compatibility, prompts now include full instructions
+    audio_response: bool = False
 ) -> List[Message]:
     """
     Format a conversation by prepending an initial system message based on the 4-mode system.
@@ -263,7 +253,6 @@ def format_chat_msg(
         messages: List of chat messages
         tutor_mode: If True, use tutor behavior (Bloom taxonomy, hints-first)
         audio_response: If True, output will be converted to speech
-        use_structured_json: Kept for API compatibility (prompts now include full JSON instructions)
     """
     response: List[Message] = []
 
@@ -275,37 +264,3 @@ def format_chat_msg(
     for message in messages:
         response.append(Message(role=message.role, content=message.content))
     return response
-
-
-#############################################################################
-########################### UNKNOWN USAGE YET ###############################
-#############################################################################
-
-
-def _to_str_list(x: Union[str, List], *, trim=True) -> List[str]:
-    if isinstance(x, list):
-        items = x
-    elif isinstance(x, str):
-        try:
-            parsed = json.loads(x)
-            items = parsed if isinstance(parsed, list) else [str(parsed)]
-        except Exception:
-            try:
-                parsed = ast.literal_eval(x)
-                items = parsed if isinstance(parsed, list) else [str(parsed)]
-            except Exception:
-                parts = re.findall(r'"([^"]+)"|\'([^\']+)\'', x)
-                items = [a or b for a, b in parts]
-    else:
-        items = [str(x)]
-
-    items = ["" if i is None else str(i) for i in items]
-    if trim:
-        items = [i.strip() for i in items]
-    return [i for i in items if i != ""]
-
-
-def join_titles(info_path: Union[str, List], *, sep=" > ", start=0) -> str:
-    items = _to_str_list(info_path)
-    items = items[start:]
-    return sep.join(items)
