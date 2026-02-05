@@ -122,9 +122,9 @@ def initialize_model_engine():
         print("🌐 Setting up OpenAI model pipeline...")
         _model_engine = get_openai_model_pipeline()
         print(f"✅ OpenAI model pipeline setup successfully! (model: {settings.openai_model})")
-        print("📚 Loading local embedding engine for RAG...")
-        _embedding_engine = get_local_embedding_engine()
-        print("✅ Local embedding engine loaded successfully!")
+        print("📚 Loading vLLM embedding engine for RAG...")
+        _embedding_engine = get_vllm_embedding_client()
+        print(f"✅ vLLM embedding engine loaded successfully at {settings.vllm_embedding_url}")
     elif mode == "mock":
         print("🎭 Setting up mock model pipeline...")
         _model_engine = get_mock_model_pipeline()

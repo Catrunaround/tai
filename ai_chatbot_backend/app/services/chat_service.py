@@ -62,8 +62,30 @@ async def chat_stream_parser(
         \[\s*\Z                              # Just '[' at end
     )
     """, re.VERBOSE)
+    # Accumulate text from OpenAI-style streaming chunks
+    accumulated_reasoning = ""
+    accumulated_content = ""
+
     async for output in stream:
-        text = output.outputs[0].text
+        # Extract content from OpenAI ChatCompletionChunk format
+        if hasattr(output, 'choices') and output.choices:
+            delta = output.choices[0].delta
+
+            # Accumulate reasoning_content (analysis/thinking channel)
+            if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                accumulated_reasoning += delta.reasoning_content
+
+            # Accumulate regular content (final channel)
+            if hasattr(delta, 'content') and delta.content:
+                accumulated_content += delta.content
+
+        # Build full text for extract_channels
+        # If we have reasoning, wrap it in <think> tags; otherwise just use content
+        if accumulated_reasoning:
+            text = f"<think>{accumulated_reasoning}</think>{accumulated_content}"
+        else:
+            text = accumulated_content
+
         channels = extract_channels(text)
         # print(channels)
         if not channels:
@@ -183,9 +205,9 @@ async def chat_stream_parser(
                         })
 
     ####### Print the complete original JSON for debugging ######
-    if json_output and 'final' in channels:
-        print("[DEBUG] Complete Original JSON Output:")
-        print(channels['final'])
+    # if json_output and 'final' in channels:
+        # print("[DEBUG] Complete Original JSON Output:")
+        # print(channels['final'])
 
     # Extract mentioned references based on output format
     mentioned_references = set()

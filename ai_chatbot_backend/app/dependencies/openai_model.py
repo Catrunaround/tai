@@ -117,10 +117,14 @@ class OpenAIModelClient:
         request_params = {
             "model": self.model,
             "messages": messages,
-            # "temperature": temperature,
-            # "max_tokens": max_tokens,
             "stream": stream,
         }
+
+        # Add optional parameters if provided
+        if temperature is not None:
+            request_params["temperature"] = temperature
+        if max_tokens is not None:
+            request_params["max_tokens"] = max_tokens
 
         # Add response_format for structured output
         if response_format is not None:
@@ -136,64 +140,65 @@ class OpenAIModelClient:
         except Exception as e:
             raise Exception(f"OpenAI API request failed: {str(e)}")
 
-    async def _stream_response(self, response) -> Iterator[str]:
+    async def _stream_response(self, response):
         """
-        Convert OpenAI streaming response to NDJSON format matching RemoteModelClient.
+        Stream raw ChatCompletionChunk objects from OpenAI API.
 
-        Yields NDJSON strings in format: {"type": "token", "data": "..."}
+        Yields raw chunks compatible with chat_stream_parser (same format as vLLM).
         """
         print("\n[OpenAI Stream] Starting streaming response (chat.completions)...")
-        accumulated = ""
         async for chunk in response:
-            # Debug: log raw chunk structure
-            # print(f"\n[DEBUG OpenAI Chat] Chunk: {chunk}")
-            # print(f"[DEBUG OpenAI Chat] choices: {chunk.choices if chunk.choices else 'none'}")
-            # if chunk.choices and chunk.choices[0].delta:
-            #     print(f"[DEBUG OpenAI Chat] delta: {chunk.choices[0].delta}")
-            #     print(f"[DEBUG OpenAI Chat] delta.content: {chunk.choices[0].delta.content}")
-
+            # Print token-by-token for real-time feedback
             if chunk.choices and chunk.choices[0].delta.content:
                 token = chunk.choices[0].delta.content
-                accumulated += token
                 print(token, end="", flush=True)
-                yield json.dumps({
-                    "type": "token",
-                    "data": token
-                }) + "\n"
-        ########## print full response ##########
-        print("\n[OpenAI Stream] Complete. Full response:")
-        print(accumulated)
-        print("[OpenAI Stream] End of response\n")
 
-    async def _stream_response_responses(self, response) -> Iterator[str]:
+            # Yield raw chunk (compatible with chat_stream_parser)
+            yield chunk
+
+        print("\n[OpenAI Stream] Complete.\n")
+
+    async def _stream_response_responses(self, response):
         """
-        Convert OpenAI Responses API streaming events to NDJSON token stream.
+        Convert OpenAI Responses API streaming events to ChatCompletionChunk format.
+
+        Note: This is for GPT-5.x models using the Responses API. We convert
+        the response format to match ChatCompletionChunk for compatibility.
         """
         print("\n[OpenAI Stream] Starting streaming response (responses API / GPT-5.x)...")
-        accumulated = ""
+
+        # Import here to avoid circular dependency
+        from dataclasses import dataclass
+        from typing import Optional
+
+        @dataclass
+        class DeltaContent:
+            content: Optional[str] = None
+            reasoning_content: Optional[str] = None
+
+        @dataclass
+        class Choice:
+            delta: DeltaContent
+
+        @dataclass
+        class MockChunk:
+            choices: list
+
         async for event in response:
             event_type = getattr(event, "type", "")
             if event_type == "response.output_text.delta":
                 token = event.delta
                 if token:
-                    accumulated += token
                     print(token, end="", flush=True)
-                    yield json.dumps({
-                        "type": "token",
-                        "data": token
-                    }) + "\n"
+                    # Yield as mock ChatCompletionChunk
+                    yield MockChunk(choices=[Choice(delta=DeltaContent(content=token))])
             elif event_type == "response.refusal.delta":
                 token = event.delta
                 if token:
-                    accumulated += token
                     print(token, end="", flush=True)
-                    yield json.dumps({
-                        "type": "token",
-                        "data": token
-                    }) + "\n"
-        print("\n[OpenAI Stream] Complete. Full response:")
-        print(accumulated)
-        print("[OpenAI Stream] End of response\n")
+                    yield MockChunk(choices=[Choice(delta=DeltaContent(content=token))])
+
+        print("\n[OpenAI Stream] Complete.\n")
 
     def _format_response(self, response) -> Dict[str, Any]:
         """Format complete response to match expected structure."""

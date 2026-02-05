@@ -169,17 +169,29 @@ async def generate_chat_response(
             response_format = RESPONSE_BLOCKS_OPENAI_FORMAT
         else:
             response_format = None
-        # Remote path: do NOT send chat history; only send system + the final user prompt.
-        remote_messages = [
-            {"role": messages[0].role, "content": messages[0].content},
-            {"role": messages[-1].role, "content": messages[-1].content},
-        ]
-        response = engine(
+        # Check if this is OpenAIModelClient - send full conversation history
+        from app.dependencies.openai_model import OpenAIModelClient
+        if isinstance(engine, OpenAIModelClient):
+            # Send full conversation history for OpenAI API
+            remote_messages = [
+                {"role": m.role, "content": m.content}
+                for m in messages
+            ]
+        else:
+            # For other remote engines (RemoteModelClient), only send system + final user prompt
+            remote_messages = [
+                {"role": messages[0].role, "content": messages[0].content},
+                {"role": messages[-1].role, "content": messages[-1].content},
+            ]
+
+        response = await engine(
             messages[-1].content,
             messages=remote_messages,
             stream=stream,
             course=course,
             response_format=response_format,
+            temperature=SAMPLING_PARAMS["temperature"],
+            max_tokens=SAMPLING_PARAMS["max_tokens"],
         )
         return response, reference_list, timer
 

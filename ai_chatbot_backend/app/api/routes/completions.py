@@ -108,7 +108,6 @@ async def create_completion(
         audio_response=params.audio_response,
         sid=sid,
         tutor_mode=params.tutor_mode,
-        json_output=params.json_output,
         timer=timer
     )
 
