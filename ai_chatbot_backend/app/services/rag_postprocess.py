@@ -1,5 +1,4 @@
 # Standard python libraries
-import time
 import json
 from dataclasses import dataclass, asdict, field
 from typing import Any, List, Optional
@@ -385,14 +384,7 @@ def _join_markdown_blocks(parts: list[str]) -> str:
 
         # Add spacing after this block (except for the last block)
         if i < len(parts) - 1:
-            next_part = parts[i + 1] if i + 1 < len(parts) else ""
-
-            # Check if current part ends with a heading or next part starts with one
-            current_is_heading = part.strip().startswith('#')
-            next_is_heading = next_part.strip().startswith('#') if next_part else False
-
             # Always use double newline for proper markdown spacing
-            # This ensures headers have blank lines before them
             result.append("\n\n")
     return "".join(result)
 
@@ -505,9 +497,6 @@ RESPONSE_BLOCKS_OPENAI_FORMAT = {
     }
 }
 
-# VLLM GuidedDecodingParams for structured response blocks
-GUIDED_RESPONSE_BLOCKS = GuidedDecodingParams(json=RESPONSE_BLOCKS_JSON_SCHEMA)
-
 # ========================
 # Voice Tutor JSON Schema (with unreadable property)
 # ========================
@@ -582,9 +571,6 @@ VOICE_TUTOR_OPENAI_FORMAT = {
         "schema": VOICE_TUTOR_RESPONSE_SCHEMA
     }
 }
-
-# VLLM GuidedDecodingParams for voice tutor structured output
-GUIDED_VOICE_TUTOR_BLOCKS = GuidedDecodingParams(json=VOICE_TUTOR_RESPONSE_SCHEMA)
 
 
 @dataclass
