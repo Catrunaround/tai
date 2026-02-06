@@ -205,9 +205,13 @@ async def chat_stream_parser(
                         })
 
     ####### Print the complete original JSON for debugging ######
-    # if json_output and 'final' in channels:
-        # print("[DEBUG] Complete Original JSON Output:")
-        # print(channels['final'])
+    if json_output and 'final' in channels:
+        import json as _json
+        print("[DEBUG] Complete Original JSON Output:")
+        try:
+            print(_json.dumps(_json.loads(channels['final']), indent=2, ensure_ascii=False))
+        except (ValueError, TypeError):
+            print(channels['final'])
 
     # Extract mentioned references based on output format
     mentioned_references = set()

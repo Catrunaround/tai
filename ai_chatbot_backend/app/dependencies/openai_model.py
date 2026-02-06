@@ -147,16 +147,19 @@ class OpenAIModelClient:
         Yields raw chunks compatible with chat_stream_parser (same format as vLLM).
         """
         print("\n[OpenAI Stream] Starting streaming response (chat.completions)...")
+        full_text = []
         async for chunk in response:
             # Print token-by-token for real-time feedback
             if chunk.choices and chunk.choices[0].delta.content:
                 token = chunk.choices[0].delta.content
                 print(token, end="", flush=True)
+                full_text.append(token)
 
             # Yield raw chunk (compatible with chat_stream_parser)
             yield chunk
 
         print("\n[OpenAI Stream] Complete.\n")
+        self._print_json("".join(full_text))
 
     async def _stream_response_responses(self, response):
         """
@@ -184,21 +187,34 @@ class OpenAIModelClient:
         class MockChunk:
             choices: list
 
+        full_text = []
         async for event in response:
             event_type = getattr(event, "type", "")
             if event_type == "response.output_text.delta":
                 token = event.delta
                 if token:
                     print(token, end="", flush=True)
+                    full_text.append(token)
                     # Yield as mock ChatCompletionChunk
                     yield MockChunk(choices=[Choice(delta=DeltaContent(content=token))])
             elif event_type == "response.refusal.delta":
                 token = event.delta
                 if token:
                     print(token, end="", flush=True)
+                    full_text.append(token)
                     yield MockChunk(choices=[Choice(delta=DeltaContent(content=token))])
 
         print("\n[OpenAI Stream] Complete.\n")
+        self._print_json("".join(full_text))
+
+    @staticmethod
+    def _print_json(text: str):
+        """Pretty-print text as JSON if parseable."""
+        try:
+            print("[OpenAI Stream] Formatted JSON output:")
+            print(json.dumps(json.loads(text), indent=2, ensure_ascii=False))
+        except (ValueError, TypeError):
+            pass
 
     def _format_response(self, response) -> Dict[str, Any]:
         """Format complete response to match expected structure."""

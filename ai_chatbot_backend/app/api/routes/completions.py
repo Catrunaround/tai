@@ -12,7 +12,7 @@ from app.core.models.chat_completion import (
     VoiceTranscriptParams,
     AudioTranscript,
 )
-from app.dependencies.model import get_model_engine, get_whisper_engine
+from app.dependencies.model import get_model_engine, get_whisper_engine, get_engine_for_mode
 from app.services.rag_retriever import top_k_selector
 from app.services.rag_generation import (
     format_chat_msg,
@@ -34,6 +34,9 @@ from app.services.chat_service import (
     get_speaker_name
 )
 from app.services.memory_synopsis_service import MemorySynopsisService
+
+# === MODEL TOGGLE: flip between "local" (vLLM) and "openai" (OpenAI API) ===
+_LLM_OVERRIDE = "openai"
 
 router = APIRouter()
 
@@ -63,8 +66,8 @@ async def create_completion(
     timer = RequestTimer(request_id=str(time.time_ns()))
     timer.mark("request_received")
 
-    # Get the pre-initialized pipeline
-    llm_engine = get_model_engine()
+    # Get the pre-initialized pipeline (respects _LLM_OVERRIDE toggle)
+    llm_engine = get_engine_for_mode(_LLM_OVERRIDE)
     audio_text = None
     if params.audio:
         whisper_engine = get_whisper_engine()

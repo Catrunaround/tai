@@ -425,47 +425,31 @@ CITATION_SCHEMA = {
         "quote_text": {
             "type": "string",
             "description": "Exact quoted text from the reference"
+        },
+        "should_open": {
+            "type": "string",
+            "enum": ["Not_open", "Should_open"],
+            "description": "\"Not_open\" if explanation suffices, \"Should_open\" if viewing the reference helps learning"
         }
     },
-    "required": ["id", "quote_text"],
+    "required": ["id", "quote_text", "should_open"],
     "additionalProperties": False
 }
 
 BLOCK_SCHEMA = {
     "type": "object",
     "properties": {
-        "type": {
-            "type": "string",
-            "enum": [
-                "paragraph",         # Standard text paragraphs
-                "heading",           # Section headers with markdown hashes (e.g., "## Title")
-                "list_item",         # Bullet or numbered list items
-                "code_block",        # Code snippets with syntax highlighting
-                "blockquote",        # Quoted content
-                "table",             # Markdown tables
-                "math",              # Mathematical expressions (LaTeX)
-                "callout",           # Important notes, warnings, tips
-                "definition",        # Term definitions
-                "example",           # Examples or illustrations
-                "summary",           # Summary or conclusion blocks
-            ],
-            "description": "The type of content block"
-        },
-        "language": {
-            "type": ["string", "null"],
-            "description": "Programming language for code blocks (e.g., 'python', 'javascript'). Set to null for non-code blocks."
-        },
         "citations": {
             "type": "array",
             "items": CITATION_SCHEMA,
-            "description": "Citations referencing the provided context. All citations in a block must be from the same source file."
+            "description": "Citations referencing the provided context (1–2 per block). Split into multiple blocks when there are more quotes, even from the same source."
         },
         "markdown_content": {
             "type": "string",
-            "description": "Rich text content in Markdown format based on the citations above. For headings, include markdown hashes (e.g., '## Title') directly in markdown_content. For code blocks, either include raw code here with `language`, or include fenced Markdown."
+            "description": "Rich text content in Markdown format based on the citations above. For headings, include markdown hashes (e.g., '## Title') directly in markdown_content. For code blocks, include fenced Markdown with language identifier."
         }
     },
-    "required": ["type", "language", "citations", "markdown_content"],
+    "required": ["citations", "markdown_content"],
     "additionalProperties": False
 }
 
@@ -508,24 +492,8 @@ VOICE_TUTOR_BLOCK_SCHEMA = {
     "properties": {
         "type": {
             "type": "string",
-            "enum": [
-                "paragraph",
-                "heading",
-                "list_item",
-                "code_block",
-                "blockquote",
-                "table",
-                "math",
-                "callout",
-                "definition",
-                "example",
-                "summary",
-            ],
-            "description": "The type of content block"
-        },
-        "language": {
-            "type": ["string", "null"],
-            "description": "Programming language for code blocks (e.g., 'python'). Set to null for non-code blocks."
+            "enum": ["readable", "not_readable"],
+            "description": "\"readable\" for content that can be spoken aloud by TTS, \"not_readable\" for content that should only be shown visually (code, formulas, tables)."
         },
         "citations": {
             "type": "array",
@@ -534,14 +502,10 @@ VOICE_TUTOR_BLOCK_SCHEMA = {
         },
         "markdown_content": {
             "type": "string",
-            "description": "SPEAKABLE content only. Write text that can be read aloud naturally by text-to-speech."
-        },
-        "unreadable": {
-            "type": ["string", "null"],
-            "description": "Content that CANNOT be spoken aloud (code, formulas, tables). Shown visually but NOT read by TTS. Set to null if all content is speakable."
+            "description": "The content in Markdown format. For readable blocks, write text that can be read aloud naturally. For not_readable blocks, include code, formulas, or tables that are shown visually only."
         }
     },
-    "required": ["type", "language", "citations", "markdown_content", "unreadable"],
+    "required": ["type", "citations", "markdown_content"],
     "additionalProperties": False
 }
 
@@ -681,7 +645,10 @@ async def _llm_synopsis_from_transcript(
     # vLLM with --reasoning-parser separates reasoning_content from content
     # Use content directly (final response without thinking)
     text = response.choices[0].message.content or "{}"
-    print('Generated MemorySynopsis JSON:', text)
+    try:
+        print('Generated MemorySynopsis JSON:', json.dumps(json.loads(text), indent=2, ensure_ascii=False))
+    except (ValueError, TypeError):
+        print('Generated MemorySynopsis JSON:', text)
     try:
         data = json.loads(text.strip())
     except json.JSONDecodeError:

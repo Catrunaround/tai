@@ -148,6 +148,28 @@ def get_model_engine():
     return _model_engine
 
 
+_override_engines: dict = {}
+
+
+def get_engine_for_mode(mode: str):
+    """Get a cached engine for the given mode."""
+    # If it matches startup mode, return the default singleton
+    if mode == settings.effective_llm_mode:
+        return get_model_engine()
+    if mode in _override_engines:
+        return _override_engines[mode]
+    # Create and cache
+    if mode == "openai":
+        engine = get_openai_model_pipeline()
+    elif mode == "local":
+        engine = get_vllm_chat_client()
+    else:
+        raise ValueError(f"Unsupported mode: {mode}")
+    _override_engines[mode] = engine
+    print(f"[INFO] Created override engine for mode: {mode}")
+    return engine
+
+
 def get_whisper_engine():
     """Returns the pre-initialized Whisper client."""
     global _whisper_engine
