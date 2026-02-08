@@ -35,9 +35,6 @@ from app.services.chat_service import (
 )
 from app.services.memory_synopsis_service import MemorySynopsisService
 
-# === MODEL TOGGLE: flip between "local" (vLLM) and "openai" (OpenAI API) ===
-_LLM_OVERRIDE = "openai"
-
 router = APIRouter()
 
 
@@ -66,8 +63,23 @@ async def create_completion(
     timer = RequestTimer(request_id=str(time.time_ns()))
     timer.mark("request_received")
 
-    # Get the pre-initialized pipeline (respects _LLM_OVERRIDE toggle)
-    llm_engine = get_engine_for_mode(_LLM_OVERRIDE)
+    # Dynamically select LLM mode based on tutor_mode flag
+    from app.config import settings
+    try:
+        llm_mode = settings.get_llm_mode_for_request(params.tutor_mode)
+        print(f"[INFO] Request mode: tutor_mode={params.tutor_mode}, selected LLM: {llm_mode.value}")
+        llm_engine = get_engine_for_mode(llm_mode.value)
+    except Exception as e:
+        # If tutor mode fails and fallback is enabled, use local model
+        if params.tutor_mode and settings.tutor_fallback_enabled:
+            print(f"[WARNING] Failed to initialize {llm_mode.value} for tutor mode: {e}")
+            print(f"[WARNING] Falling back to local model")
+            llm_engine = get_engine_for_mode("local")
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"LLM service unavailable: {str(e)}"
+            )
     audio_text = None
     if params.audio:
         whisper_engine = get_whisper_engine()

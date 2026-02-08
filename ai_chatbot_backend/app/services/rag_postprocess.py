@@ -209,25 +209,6 @@ def extract_answers(text: str, include_thinking: bool = False, include_unreadabl
     """
     Extract markdown_content from JSON blocks structure with smooth streaming support.
     Handles both complete and partial JSON blocks to enable word-by-word streaming.
-    Expected formats:
-    1. Original format (prompt-based):
-       {
-         "blocks": [
-           {"type": "...", "markdown_content": "...", "citations": [...]},
-           ...
-         ]
-       }
-
-    2. Voice tutor format with unreadable field:
-       {
-         "blocks": [
-           {"type": "...", "markdown_content": "...", "unreadable": "...", "citations": [...]},
-           ...
-         ]
-       }
-
-    3. (Legacy) Structured format with an optional `thinking` field.
-
     Args:
         text: The JSON text to parse
         include_thinking: If True, prepend thinking content (for debugging/display)
@@ -458,7 +439,6 @@ RESPONSE_BLOCKS_JSON_SCHEMA = {
     "properties": {
         "thinking": {
             "type": "string",
-
             "description": "Optional reasoning/scratchpad text. Leave empty when not needed.",
         },
         "blocks": {
