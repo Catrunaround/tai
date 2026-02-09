@@ -157,18 +157,21 @@ def build_augmented_prompt(
     # Create modified message based on whether documents were inserted
     if not insert_document or n == 0:
         print("[INFO] No relevant documents found above the similarity threshold.")
-        # Use pre-assembled addendum for no-refs scenario
-        system_add_message = config.system_addendum_no_refs.format(
-            course=course, class_name=class_name
-        )
+        addendum = config.system_addendum_no_refs
         modified_message = ""
     else:
         print("[INFO] Relevant documents found and inserted into the prompt.")
-        # Use pre-assembled addendum for refs-found scenario
-        system_add_message = config.system_addendum_with_refs.format(
-            course=course, class_name=class_name
-        )
+        addendum = config.system_addendum_with_refs
         modified_message = f"{insert_document}\n---\n"
+    # Resolve {course}/{class_name} placeholders in the addendum
+    if isinstance(addendum, dict):
+        # Template-based: resolve placeholders in each value
+        system_add_message = {
+            k: v.format(course=course, class_name=class_name) for k, v in addendum.items()
+        }
+    else:
+        # Legacy string format
+        system_add_message = addendum.format(course=course, class_name=class_name)
     # Append user instruction to the modified message
     if not (answer_content and problem_content):
         modified_message += f"Instruction: {user_message}"

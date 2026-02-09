@@ -14,6 +14,7 @@ and voice/ subfolders for easy editing.
 
 from dataclasses import dataclass
 from enum import Enum, auto
+from typing import Union
 
 # Import prompts from subfolders
 from app.prompts.textchat import (
@@ -47,8 +48,8 @@ class ModeConfig:
     """Complete configuration for a mode - all prompts in one place."""
     mode: Mode
     system_prompt: str
-    system_addendum_with_refs: str  # Complete addendum when refs found
-    system_addendum_no_refs: str    # Complete addendum when no refs
+    system_addendum_with_refs: Union[str, dict]  # str: append | dict: template fill
+    system_addendum_no_refs: Union[str, dict]    # str: append | dict: template fill
     is_tutor: bool
     is_audio: bool
 
@@ -141,8 +142,14 @@ def get_complete_system_prompt(
     """
     config = get_mode_config(tutor_mode, audio_response)
     addendum = config.system_addendum_with_refs if has_refs else config.system_addendum_no_refs
-    addendum = addendum.format(course=course, class_name=class_name)
-    return config.system_prompt + addendum
+    if isinstance(addendum, dict):
+        # Template-based: fill category extensions into the system prompt
+        resolved = {k: v.format(course=course, class_name=class_name) for k, v in addendum.items()}
+        return config.system_prompt.format(**resolved)
+    else:
+        # Legacy string: format and append
+        addendum = addendum.format(course=course, class_name=class_name)
+        return config.system_prompt + addendum
 
 
 def get_system_prompt(tutor_mode: bool, audio_response: bool) -> str:

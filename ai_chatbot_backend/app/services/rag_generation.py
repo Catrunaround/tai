@@ -153,7 +153,12 @@ async def generate_chat_response(
     )
     # Update the last message with the modified content
     messages[-1].content += modified_message
-    messages[0].content += system_add_message
+    if isinstance(system_add_message, dict):
+        # Template-based: fill category extensions into the system prompt
+        messages[0].content = messages[0].content.format(**system_add_message)
+    else:
+        # Legacy string: append to system prompt
+        messages[0].content += system_add_message
     # Generate the response using the engine
     if timer:
         timer.mark("llm_generation_start")

@@ -5,12 +5,20 @@ Generates 8 files representing all combinations of:
 - 4 modes (text_chat_tutor, text_chat_regular, voice_tutor, voice_regular)
 - 2 scenarios (with_refs, no_refs)
 
-Usage:
-    cd ai_chatbot_backend
-    python -m app.prompts.scripts.export_prompts
+Usage (from repo root or anywhere):
+    cd ai_chatbot_backend && python -m app.prompts.scripts.export_prompts
+    # or by path (script adds project root to path):
+    python ai_chatbot_backend/app/prompts/scripts/export_prompts.py
 """
 
+import sys
 from pathlib import Path
+
+# Allow running as script by path: ensure ai_chatbot_backend is on sys.path
+_script_dir = Path(__file__).resolve().parent
+_backend_root = _script_dir.parent.parent.parent
+if _backend_root not in sys.path:
+    sys.path.insert(0, str(_backend_root))
 
 from app.prompts.modes import get_complete_system_prompt
 
