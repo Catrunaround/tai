@@ -256,6 +256,7 @@ def extract_answers(text: str, include_thinking: bool = False, include_unreadabl
     # - `(?:\\.|[^"\\])*` captures valid JSON string content, including escaped quotes.
     pattern = r'(?<!\\)"markdown_content"\s*:\s*"((?:\\.|[^"\\])*)'
     markdown_parts = []
+    prev_match_end = 0
 
     for match in re.finditer(pattern, text, re.DOTALL):
         raw_content = match.group(1)
@@ -271,11 +272,31 @@ def extract_answers(text: str, include_thinking: bool = False, include_unreadabl
                 # Try to properly unescape JSON escape sequences
                 # Wrap in quotes to make it valid JSON string for parsing
                 unescaped = json.loads('"' + cleaned_content + '"').strip()
-                markdown_parts.append(unescaped)
+                content = unescaped
             except json.JSONDecodeError:
                 # If unescaping fails (malformed escapes), use raw content
                 # This handles edge cases during streaming
-                markdown_parts.append(cleaned_content.strip())
+                content = cleaned_content.strip()
+
+            # Only append citation markers for complete markdown_content strings
+            # (has closing quote), so partial blocks streaming in don't get premature markers
+            is_complete = match.end() < len(text) and text[match.end()] == '"'
+            if is_complete and content:
+                # Extract citation ids from the region between previous match and this one
+                region = text[prev_match_end:match.start()]
+                citations_match = re.search(
+                    r'"citations"\s*:\s*\[(.*?)\]', region, re.DOTALL
+                )
+                if citations_match:
+                    ref_ids = re.findall(
+                        r'"id"\s*:\s*(\d+)', citations_match.group(1)
+                    )
+                    if ref_ids:
+                        content += f" [Reference: {', '.join(ref_ids)}]"
+
+            markdown_parts.append(content)
+
+        prev_match_end = match.end()
 
     return _join_markdown_blocks(markdown_parts)
 
@@ -342,6 +363,19 @@ def _render_block_markdown(block: dict, include_unreadable: bool = True) -> str:
 
     else:
         result = stripped
+
+    # Append citation markers
+    citations = block.get("citations", [])
+    if isinstance(citations, list) and citations:
+        ref_ids = []
+        for c in citations:
+            if isinstance(c, dict) and "id" in c:
+                try:
+                    ref_ids.append(str(int(c["id"])))
+                except (TypeError, ValueError):
+                    continue
+        if ref_ids:
+            result += f" [Reference: {', '.join(ref_ids)}]"
 
     # Append unreadable content if present
     if unreadable_content:
