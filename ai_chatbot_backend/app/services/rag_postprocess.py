@@ -1,5 +1,6 @@
 # Standard python libraries
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, List, Optional
 
@@ -699,4 +700,8 @@ async def _llm_merge_synopses(
     except json.JSONDecodeError:
         print('Failed to parse merged MemorySynopsis JSON:', text)
         return MemorySynopsis()
+    return MemorySynopsis(**data)
+    return MemorySynopsis(**data)
+    return MemorySynopsis(**data)
+    return MemorySynopsis(**data)
     return MemorySynopsis(**data)
