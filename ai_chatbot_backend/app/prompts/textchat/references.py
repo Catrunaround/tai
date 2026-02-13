@@ -61,7 +61,7 @@ TUTOR_ADDENDUM_WITH_REFS = {
         "help them understand the cited references.\n"
         "Ground concrete claims in the provided References. When a block "
         "relies on a reference, include exactly one citation and copy one "
-        "exact supporting sentence into `citations[0].quote_text`.\n"
+        "exact all the supporting sentences in this citation into `citations[0].quote_text`.\n"
     ),
     "format_ext": (
         "For each block, write `citations` BEFORE `markdown_content`. "
