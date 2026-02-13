@@ -1,14 +1,15 @@
 # Standard python libraries
 import json
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, List, Optional
+
 # Third-party libraries
-from openai import OpenAI, AsyncOpenAI
+from openai import AsyncOpenAI, OpenAI
+
+from app.config import settings
 # Local libraries
 from app.core.models.chat_completion import Message
 from app.prompts import memory as memory_prompts
-from app.config import settings
-import re
 
 
 def _parse_json_string_token(text: str, quote_index: int) -> tuple[str, int, bool]:
@@ -556,7 +557,8 @@ async def build_memory_synopsis(
     # Graceful MongoDB retrieval for previous memory
     if chat_history_sid and not prev_synopsis:
         try:
-            from app.services.memory_synopsis_service import MemorySynopsisService
+            from app.services.memory_synopsis_service import \
+                MemorySynopsisService
             memory_service = MemorySynopsisService()
             prev_synopsis = await memory_service.get_by_chat_history_sid(chat_history_sid)
         except Exception as e:
