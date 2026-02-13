@@ -288,17 +288,40 @@ def extract_answers(text: str, include_thinking: bool = False, include_unreadabl
                     r'"citations"\s*:\s*\[(.*?)\]', region, re.DOTALL
                 )
                 if citations_match:
-                    ref_ids = re.findall(
-                        r'"id"\s*:\s*(\d+)', citations_match.group(1)
+                    citation_parts = _extract_citation_parts_from_raw(
+                        citations_match.group(1)
                     )
-                    if ref_ids:
-                        content += f" [Reference: {', '.join(ref_ids)}]"
+                    if citation_parts:
+                        content += " " + " ".join(citation_parts)
 
             markdown_parts.append(content)
 
         prev_match_end = match.end()
 
     return _join_markdown_blocks(markdown_parts)
+
+
+def _extract_citation_parts_from_raw(raw_citations: str) -> list[str]:
+    """Extract citation markers with quote_text from raw JSON text of a citations array (demo)."""
+    parts = []
+    # Match each citation object: extract id and quote_text
+    for obj_match in re.finditer(r'\{[^}]*\}', raw_citations, re.DOTALL):
+        obj_text = obj_match.group(0)
+        id_match = re.search(r'"id"\s*:\s*(\d+)', obj_text)
+        if not id_match:
+            continue
+        ref_id = id_match.group(1)
+        quote_match = re.search(r'"quote_text"\s*:\s*"((?:\\.|[^"\\])*)"', obj_text, re.DOTALL)
+        if quote_match:
+            try:
+                quote = json.loads('"' + quote_match.group(1) + '"').strip()
+            except json.JSONDecodeError:
+                quote = quote_match.group(1).strip()
+            if quote:
+                parts.append(f'[Reference {ref_id}: "{quote}"]')
+                continue
+        parts.append(f"[Reference: {ref_id}]")
+    return parts
 
 
 def _render_block_markdown(block: dict, include_unreadable: bool = True) -> str:
@@ -364,18 +387,23 @@ def _render_block_markdown(block: dict, include_unreadable: bool = True) -> str:
     else:
         result = stripped
 
-    # Append citation markers
+    # Append citation markers with quote context (demo)
     citations = block.get("citations", [])
     if isinstance(citations, list) and citations:
-        ref_ids = []
+        citation_parts = []
         for c in citations:
             if isinstance(c, dict) and "id" in c:
                 try:
-                    ref_ids.append(str(int(c["id"])))
+                    ref_id = str(int(c["id"]))
                 except (TypeError, ValueError):
                     continue
-        if ref_ids:
-            result += f" [Reference: {', '.join(ref_ids)}]"
+                quote = c.get("quote_text", "")
+                if isinstance(quote, str) and quote.strip():
+                    citation_parts.append(f'[Reference {ref_id}: "{quote.strip()}"]')
+                else:
+                    citation_parts.append(f"[Reference: {ref_id}]")
+        if citation_parts:
+            result += " " + " ".join(citation_parts)
 
     # Append unreadable content if present
     if unreadable_content:
