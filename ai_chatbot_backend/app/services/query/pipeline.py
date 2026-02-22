@@ -5,13 +5,13 @@ from uuid import UUID
 # Third-party libraries
 from openai import OpenAI, AsyncOpenAI
 # Local libraries
-from app.services.rag_retriever import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, get_file_related_documents
-from app.services.rag_postprocess import extract_channels
+from app.services.retrieval import get_reference_documents, get_chunks_by_file_uuid, get_sections_by_file_uuid, get_file_related_documents
+from app.services.response.parser import extract_channels
 from app.services.request_timer import RequestTimer
-from app.prompts import modes
+from app.services.generation.prompts import modes
 from app.config import settings
 
-# Query reformulator prompt (inlined from rag.py)
+# Query reformulator prompt 
 _QUERY_REFORMULATOR_PROMPT = (
     "You are a query reformulator for a RAG system. "
     "Given the user message and the memory synopsis of the current conversation as well as the file context if any, "
@@ -154,24 +154,17 @@ def build_augmented_prompt(
     # Get mode configuration - single source of truth
     config = modes.get_mode_config(tutor_mode, audio_response)
 
-    # Create modified message based on whether documents were inserted
+    # Select complete system prompt based on whether documents were found
     if not insert_document or n == 0:
         print("[INFO] No relevant documents found above the similarity threshold.")
-        addendum = config.system_addendum_no_refs
+        system_prompt = config.system_prompt_no_refs
         modified_message = ""
     else:
         print("[INFO] Relevant documents found and inserted into the prompt.")
-        addendum = config.system_addendum_with_refs
+        system_prompt = config.system_prompt_with_refs
         modified_message = f"{insert_document}\n---\n"
-    # Resolve {course}/{class_name} placeholders in the addendum
-    if isinstance(addendum, dict):
-        # Template-based: resolve placeholders in each value
-        system_add_message = {
-            k: v.format(course=course, class_name=class_name) for k, v in addendum.items()
-        }
-    else:
-        # Legacy string format
-        system_add_message = addendum.format(course=course, class_name=class_name)
+    # Resolve {course}/{class_name} placeholders
+    system_add_message = system_prompt.format(course=course, class_name=class_name)
     # Append user instruction to the modified message
     if not (answer_content and problem_content):
         modified_message += f"Instruction: {user_message}"

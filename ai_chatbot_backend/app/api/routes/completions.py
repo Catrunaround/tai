@@ -13,11 +13,8 @@ from app.core.models.chat_completion import (
     AudioTranscript,
 )
 from app.dependencies.model import get_model_engine, get_whisper_engine, get_engine_for_mode
-from app.services.rag_retriever import top_k_selector
-from app.services.rag_generation import (
-    format_chat_msg,
-    generate_chat_response
-)
+from app.services.retrieval import top_k_selector
+from app.services.generation.chat import format_chat_msg, generate_chat_response
 from app.services.request_timer import RequestTimer
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -25,15 +22,15 @@ from sqlalchemy.orm import Session
 from app.core.dbs.metadata_db import get_metadata_db
 from app.services.file_service import file_service
 from app.services.problem_service import ProblemService
-from app.services.audio_service import audio_to_text, audio_stream_parser
-from app.services.chat_service import (
-    chat_stream_parser,
+from app.services.audio.stt import audio_to_text, audio_stream_parser
+from app.services.audio.tts import (
     format_audio_text_message,
     audio_generator,
     tts_parsor,
     get_speaker_name
 )
-from app.services.memory_synopsis_service import MemorySynopsisService
+from app.services.response.stream_handler import chat_stream_parser
+from app.services.memory.service import MemorySynopsisService
 
 router = APIRouter()
 

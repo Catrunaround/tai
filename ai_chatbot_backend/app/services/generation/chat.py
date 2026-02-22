@@ -9,10 +9,10 @@ from openai import AsyncOpenAI, OpenAI
 from app.config import settings
 # Local libraries
 from app.core.models.chat_completion import Message, UserFocus
-from app.prompts.modes import get_system_prompt
-from app.services.rag_postprocess import (RESPONSE_BLOCKS_OPENAI_FORMAT,
-                                          VOICE_TUTOR_OPENAI_FORMAT)
-from app.services.rag_preprocess import (build_augmented_prompt,
+from app.services.generation.prompts import get_system_prompt
+from app.services.response.schemas import (RESPONSE_BLOCKS_OPENAI_FORMAT,
+                                            VOICE_TUTOR_OPENAI_FORMAT)
+from app.services.query.pipeline import (build_augmented_prompt,
                                          build_file_augmented_context,
                                          build_retrieval_query)
 from app.services.request_timer import RequestTimer
@@ -120,8 +120,7 @@ async def generate_chat_response(
     previous_memory = None
     if sid and len(messages) > 2:
         try:
-            from app.services.memory_synopsis_service import \
-                MemorySynopsisService
+            from app.services.memory.service import MemorySynopsisService
             memory_service = MemorySynopsisService()
             previous_memory = await memory_service.get_by_chat_history_sid(sid)
         except Exception as e:
@@ -156,12 +155,8 @@ async def generate_chat_response(
     )
     # Update the last message with the modified content
     messages[-1].content += modified_message
-    if isinstance(system_add_message, dict):
-        # Template-based: fill category extensions into the system prompt
-        messages[0].content = messages[0].content.format(**system_add_message)
-    else:
-        # Legacy string: append to system prompt
-        messages[0].content += system_add_message
+    # Replace system prompt with the complete, resolved prompt
+    messages[0].content = system_add_message
     # Generate the response using the engine
     if timer:
         timer.mark("llm_generation_start")
