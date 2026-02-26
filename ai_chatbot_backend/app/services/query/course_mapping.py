@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 # Local libraries
-from app.services.retrieval.embedding import (
+from app.services.query.embedding import (
     _get_embedding, _get_cursor, _decode_vec_from_db,
     SQLDB,
 )
@@ -91,10 +91,10 @@ def _sql_top_k_docs(
     k: int
 ) -> Tuple[List[str], List[str]]:
     """
-    SQL 检索：返回
-      - top_docs:        List[str]  选中的 chunk 文本
-      - top_ref_paths:   List[str]  与之对应的 reference_path
-    不归一化，直接用点积排序。
+    SQL retrieval: returns
+      - top_docs:        List[str]  selected chunk texts
+      - top_ref_paths:   List[str]  corresponding reference_paths
+    Uses dot product scoring without normalization.
     """
     if k <= 0:
         return [], []
@@ -141,7 +141,7 @@ def _sql_top_k_docs(
         return [], []
 
     M = np.vstack(vecs)         # (n, d)
-    scores = M @ qv             # (n,)  直接点积
+    scores = M @ qv             # (n,)
 
     k = min(k, len(ids))
     top_idx = np.argpartition(scores, -k)[-k:]

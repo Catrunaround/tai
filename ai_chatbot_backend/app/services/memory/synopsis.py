@@ -10,7 +10,7 @@ from app.config import settings
 # Local libraries
 from app.core.models.chat_completion import Message
 from app.services.memory import prompts as memory_prompts
-from app.services.response.schemas import MEMORY_SYNOPSIS_JSON_SCHEMA
+from app.services.generation.schemas import MEMORY_SYNOPSIS_JSON_SCHEMA
 
 
 @dataclass

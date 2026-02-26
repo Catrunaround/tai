@@ -40,6 +40,17 @@ class ResponseReference(BaseEvt):
     type: Literal["response.reference"] = "response.reference"
     references: List[Reference] = Field(default_factory=list, min_items=1)
 
+class CitationOpen(BaseEvt):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["response.citation.open"] = "response.citation.open"
+    citation_id: int = Field(ge=0)
+    quote_text: Optional[str] = None
+
+class CitationClose(BaseEvt):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["response.citation.close"] = "response.citation.close"
+    citation_id: int = Field(ge=0)
+
 class AudioTranscript(BaseEvt):
     model_config = ConfigDict(extra="forbid")
     type: Literal["response.transcript"] = "response.transcript"

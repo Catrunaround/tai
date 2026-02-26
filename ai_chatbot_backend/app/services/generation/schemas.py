@@ -37,13 +37,8 @@ CITATION_SCHEMA = {
             "type": "string",
             "description": "Exact quoted text from the reference"
         },
-        "should_open": {
-            "type": "string",
-            "enum": ["Not_open", "Should_open"],
-            "description": "\"Not_open\" if explanation suffices, \"Should_open\" if viewing the reference helps learning"
-        }
     },
-    "required": ["id", "quote_text", "should_open"],
+    "required": ["id", "quote_text"],
     "additionalProperties": False
 }
 
@@ -55,12 +50,20 @@ BLOCK_SCHEMA = {
             "items": CITATION_SCHEMA,
             "description": "Citations referencing the provided context (1–2 per block). Split into multiple blocks when there are more quotes, even from the same source."
         },
+        "open": {
+            "type": "boolean",
+            "description": "true to open the cited reference file on the learner's screen. false to keep current state."
+        },
         "markdown_content": {
             "type": "string",
             "description": "Rich text content in Markdown format based on the citations above. For headings, include markdown hashes (e.g., '## Title') directly in markdown_content. For code blocks, include fenced Markdown with language identifier."
-        }
+        },
+        "close": {
+            "type": "boolean",
+            "description": "true to close the reference file after this block. false to keep it open for continued explanation."
+        },
     },
-    "required": ["citations", "markdown_content"],
+    "required": ["citations", "open", "markdown_content", "close"],
     "additionalProperties": False
 }
 
@@ -108,12 +111,20 @@ VOICE_TUTOR_BLOCK_SCHEMA = {
             "items": CITATION_SCHEMA,
             "description": "Citations referencing the provided context."
         },
+        "open": {
+            "type": "boolean",
+            "description": "true to open the cited reference file on the learner's screen. false to keep current state."
+        },
         "markdown_content": {
             "type": "string",
             "description": "The content in Markdown format. For readable blocks, write text that can be read aloud naturally. For not_readable blocks, include code, formulas, or tables that are shown visually only."
-        }
+        },
+        "close": {
+            "type": "boolean",
+            "description": "true to close the reference file after this block. false to keep it open for continued explanation."
+        },
     },
-    "required": ["type", "citations", "markdown_content"],
+    "required": ["type", "citations", "open", "markdown_content", "close"],
     "additionalProperties": False
 }
 

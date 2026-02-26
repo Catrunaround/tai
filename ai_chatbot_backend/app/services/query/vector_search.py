@@ -10,17 +10,20 @@ from uuid import UUID
 import numpy as np
 
 # Local libraries
-from app.services.retrieval.embedding import (
+from app.services.query.embedding import (
     _get_embedding, _get_cursor, _decode_vec_from_db,
     EMBEDDING_PICKLE_PATH, SQLDB,
 )
-from app.services.retrieval.course_mapping import _get_pickle_and_class
+from app.services.query.course_mapping import _get_pickle_and_class
 
 if TYPE_CHECKING:
     from app.services.request_timer import RequestTimer
 
 _course_cache = {}
 _course_lock = threading.Lock()
+
+_desc_cache = {}
+_desc_lock = threading.Lock()
 
 
 def get_reference_documents(
@@ -84,6 +87,40 @@ def get_sections_by_file_uuid(file_uuid: UUID) -> List[Dict[int, Any]]:
         """, (str(file_uuid),)).fetchone()
         sections = json.loads(rows["sections"]) if rows and rows["sections"] else []
     return sections
+
+def get_file_descriptions_by_course(course: str) -> List[Dict[str, str]]:
+    """
+    Get all file descriptions for a given course code.
+    Cached per course, invalidated when DB data_version changes.
+    """
+    if not course or course == "general":
+        return []
+
+    with _get_cursor() as cur:
+        dv_now = cur.execute("PRAGMA data_version").fetchone()[0]
+
+    with _desc_lock:
+        cached = _desc_cache.get(course)
+    if cached is not None and cached["dv"] == dv_now:
+        return cached["descriptions"]
+
+    with _get_cursor() as cur:
+        rows = cur.execute("""
+            SELECT file_name, description
+            FROM file
+            WHERE course_code = ?
+              AND description IS NOT NULL
+              AND description != ''
+            ORDER BY file_name;
+        """, (course,)).fetchall()
+
+    descriptions = [{"file_name": row["file_name"], "description": row["description"]} for row in rows]
+
+    with _desc_lock:
+        _desc_cache[course] = {"dv": dv_now, "descriptions": descriptions}
+
+    return descriptions
+
 
 def get_file_related_documents(
     file_uuid: UUID, course: str, top_k: int

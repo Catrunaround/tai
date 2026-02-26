@@ -1,7 +1,8 @@
 # Standard python libraries
 import json
 import re
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
 def _parse_json_string_token(text: str, quote_index: int) -> tuple[str, int, bool]:
@@ -298,6 +299,246 @@ def _extract_citation_parts_from_raw(raw_citations: str) -> list[str]:
                 continue
         parts.append(f"[Reference: {ref_id}]")
     return parts
+
+
+# ========================
+# Block-aware streaming parser for citation open/close events
+# ========================
+
+@dataclass
+class CitationInfo:
+    """Parsed citation metadata from a block."""
+    citation_id: int
+    quote_text: str = ""
+
+
+@dataclass
+class BlockStreamEvent:
+    """A single event produced by the block-aware streaming parser."""
+    citation_open: Optional[CitationInfo] = None
+    citation_close: Optional[int] = None  # citation_id that just ended
+    text_delta: Optional[str] = None
+
+
+@dataclass
+class BlockStreamState:
+    """Mutable state for tracking block boundaries across streaming chunks."""
+    previous_answer_text: str = ""
+    active_citation_id: Optional[int] = None
+    pending_close: bool = False  # whether the previous block had close=true
+    opened_block_indices: set = field(default_factory=set)
+
+
+def _extract_citation_from_region(region: str) -> Optional[CitationInfo]:
+    """Extract first citation info from a JSON text region (between blocks)."""
+    citations_match = re.search(
+        r'"citations"\s*:\s*\[(.*?)\]', region, re.DOTALL
+    )
+    if not citations_match:
+        return None
+
+    raw_citations = citations_match.group(1)
+    obj_match = re.search(r'\{[^}]*\}', raw_citations, re.DOTALL)
+    if not obj_match:
+        return None
+
+    obj_text = obj_match.group(0)
+    id_match = re.search(r'"id"\s*:\s*(\d+)', obj_text)
+    if not id_match:
+        return None
+
+    citation_id = int(id_match.group(1))
+
+    quote_text = ""
+    quote_match = re.search(
+        r'"quote_text"\s*:\s*"((?:\\.|[^"\\])*)"', obj_text, re.DOTALL
+    )
+    if quote_match:
+        try:
+            quote_text = json.loads('"' + quote_match.group(1) + '"').strip()
+        except json.JSONDecodeError:
+            quote_text = quote_match.group(1).strip()
+
+    return CitationInfo(citation_id=citation_id, quote_text=quote_text)
+
+
+def _extract_open_close_from_region(region: str) -> tuple[bool, bool]:
+    """Extract previous block's close and current block's open from region_before.
+
+    In the region between two ``markdown_content`` matches the JSON looks like:
+        ...prev_content","close":<prev>},{"citations":[...],"open":<curr>,"markdown...
+
+    Returns (prev_block_close, curr_block_open).
+    """
+    # First "close" match → belongs to previous block
+    close_match = re.search(r'"close"\s*:\s*(true|false)', region, re.IGNORECASE)
+    prev_close = close_match is not None and close_match.group(1).lower() == 'true'
+
+    # Last "open" match → belongs to current block (skip any in citations/strings)
+    open_matches = list(re.finditer(r'"open"\s*:\s*(true|false)', region, re.IGNORECASE))
+    curr_open = bool(open_matches) and open_matches[-1].group(1).lower() == 'true'
+
+    return prev_close, curr_open
+
+
+def _flush_text_delta(
+    all_content_parts: list[str],
+    state: BlockStreamState,
+    events: List[BlockStreamEvent],
+) -> None:
+    """Compute and append a text delta event if there is new content."""
+    current = _join_markdown_blocks([p for p in all_content_parts if p])
+    if current and len(current) > len(state.previous_answer_text):
+        delta = current[len(state.previous_answer_text):]
+        if delta.strip():
+            events.append(BlockStreamEvent(text_delta=delta))
+        state.previous_answer_text = current
+
+
+def extract_answers_with_citations(
+    text: str,
+    state: BlockStreamState,
+    include_unreadable: bool = True,
+) -> List[BlockStreamEvent]:
+    """
+    Block-aware streaming parser that produces citation lifecycle events
+    alongside text deltas.  Events are **interleaved** so that each block's
+    text appears between its CitationOpen and the next CitationClose.
+
+    Called on every streaming chunk with the full accumulated JSON text.
+    Uses ``state`` to track what has already been emitted.
+
+    Returns a list of BlockStreamEvents to emit in order.
+    """
+    events: List[BlockStreamEvent] = []
+
+    if not text.strip():
+        return events
+
+    # --- Fast path: try complete JSON parse ---
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict) and "blocks" in data:
+            return _process_complete_blocks(data, state, include_unreadable)
+    except json.JSONDecodeError:
+        pass
+
+    # --- Streaming path ---
+    pattern = r'(?<!\\)"markdown_content"\s*:\s*"((?:\\.|[^"\\])*)'
+    matches = list(re.finditer(pattern, text, re.DOTALL))
+
+    prev_match_end = 0
+    all_content_parts: list[str] = []
+
+    for block_idx, match in enumerate(matches):
+        # Detect new block: flush text for previous block, then emit close/open
+        if block_idx not in state.opened_block_indices:
+            # Flush accumulated text BEFORE closing the previous citation
+            _flush_text_delta(all_content_parts, state, events)
+
+            region_before = text[prev_match_end:match.start()]
+            citation_info = _extract_citation_from_region(region_before)
+            prev_close, curr_open = _extract_open_close_from_region(region_before)
+
+            # Previous block had close=true → close active citation
+            if state.active_citation_id is not None and (prev_close or state.pending_close):
+                events.append(BlockStreamEvent(citation_close=state.active_citation_id))
+                state.active_citation_id = None
+            state.pending_close = False
+
+            # Current block has open=true → open new citation
+            if curr_open and citation_info is not None:
+                events.append(BlockStreamEvent(citation_open=citation_info))
+                state.active_citation_id = citation_info.citation_id
+
+            state.opened_block_indices.add(block_idx)
+
+        # Extract markdown content (same logic as extract_answers streaming path)
+        raw_content = match.group(1)
+        cleaned_content = raw_content
+        if raw_content.endswith('\\'):
+            cleaned_content = raw_content[:-1]
+
+        if cleaned_content:
+            try:
+                unescaped = json.loads('"' + cleaned_content + '"').strip()
+            except json.JSONDecodeError:
+                unescaped = cleaned_content.strip()
+            all_content_parts.append(unescaped)
+        else:
+            all_content_parts.append("")
+
+        prev_match_end = match.end()
+
+    # Flush remaining text (current block still being streamed)
+    _flush_text_delta(all_content_parts, state, events)
+
+    return events
+
+
+def _process_complete_blocks(
+    data: dict,
+    state: BlockStreamState,
+    include_unreadable: bool,
+) -> List[BlockStreamEvent]:
+    """Handle the complete JSON case.  Text is interleaved per-block."""
+    events: List[BlockStreamEvent] = []
+    blocks = data.get("blocks", [])
+
+    all_content_parts: list[str] = []
+    for block_idx, block in enumerate(blocks):
+        if not isinstance(block, dict):
+            continue
+
+        if block_idx not in state.opened_block_indices:
+            # Flush text accumulated so far (belongs to the previous citation)
+            _flush_text_delta(all_content_parts, state, events)
+
+            # Read open/close from block level
+            block_open = bool(block.get("open", False))
+            block_close = bool(block.get("close", False))
+
+            # Parse citation from current block
+            citation_info: Optional[CitationInfo] = None
+            citations = block.get("citations", [])
+            if isinstance(citations, list) and citations:
+                c = citations[0]
+                if isinstance(c, dict) and "id" in c:
+                    try:
+                        citation_info = CitationInfo(
+                            citation_id=int(c["id"]),
+                            quote_text=str(c.get("quote_text", "")),
+                        )
+                    except (TypeError, ValueError):
+                        pass
+
+            # Close previous if pending
+            if state.active_citation_id is not None and state.pending_close:
+                events.append(BlockStreamEvent(citation_close=state.active_citation_id))
+                state.active_citation_id = None
+
+            # Open new citation if block says open=true
+            if block_open and citation_info is not None:
+                events.append(BlockStreamEvent(citation_open=citation_info))
+                state.active_citation_id = citation_info.citation_id
+
+            state.pending_close = block_close
+            state.opened_block_indices.add(block_idx)
+
+        content = _render_block_markdown(block, include_unreadable=include_unreadable)
+        if content:
+            all_content_parts.append(content)
+
+    # Flush remaining text (belongs to the last citation)
+    _flush_text_delta(all_content_parts, state, events)
+
+    # Close if last block had close=true (or any active citation at end)
+    if state.active_citation_id is not None and state.pending_close:
+        events.append(BlockStreamEvent(citation_close=state.active_citation_id))
+        state.active_citation_id = None
+        state.pending_close = False
+
+    return events
 
 
 def _render_block_markdown(block: dict, include_unreadable: bool = True) -> str:

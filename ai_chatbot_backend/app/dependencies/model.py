@@ -118,6 +118,9 @@ def initialize_model_engine():
         print("🌐 Setting up remote model pipeline...")
         _model_engine = get_remote_model_pipeline()
         print("✅ Remote model pipeline setup successfully!")
+        print("📚 Loading vLLM embedding engine for RAG...")
+        _embedding_engine = get_vllm_embedding_client()
+        print(f"✅ vLLM embedding engine loaded successfully at {settings.vllm_embedding_url}")
     elif mode == "openai":
         print("🌐 Setting up OpenAI model pipeline...")
         _model_engine = get_openai_model_pipeline()

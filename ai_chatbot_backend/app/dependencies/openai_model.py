@@ -144,7 +144,7 @@ class OpenAIModelClient:
         """
         Stream raw ChatCompletionChunk objects from OpenAI API.
 
-        Yields raw chunks compatible with chat_stream_parser (same format as vLLM).
+        Yields raw chunks compatible with BaseStreamHandler (same format as vLLM).
         """
         print("\n[OpenAI Stream] Starting streaming response (chat.completions)...")
         full_text = []
@@ -155,7 +155,7 @@ class OpenAIModelClient:
                 print(token, end="", flush=True)
                 full_text.append(token)
 
-            # Yield raw chunk (compatible with chat_stream_parser)
+            # Yield raw chunk (compatible with BaseStreamHandler)
             yield chunk
 
         print("\n[OpenAI Stream] Complete.\n")

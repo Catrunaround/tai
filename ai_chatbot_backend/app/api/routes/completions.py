@@ -13,8 +13,10 @@ from app.core.models.chat_completion import (
     AudioTranscript,
 )
 from app.dependencies.model import get_model_engine, get_whisper_engine, get_engine_for_mode
-from app.services.retrieval import top_k_selector
-from app.services.generation.chat import format_chat_msg, generate_chat_response
+from app.services.query import top_k_selector
+from app.services.generation.chat import run_chat_pipeline
+from app.services.generation.tutor import run_tutor_pipeline
+from app.services.generation.message_format import format_chat_msg
 from app.services.request_timer import RequestTimer
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -29,7 +31,6 @@ from app.services.audio.tts import (
     tts_parsor,
     get_speaker_name
 )
-from app.services.response.stream_handler import chat_stream_parser
 from app.services.memory.service import MemorySynopsisService
 
 router = APIRouter()
@@ -109,8 +110,10 @@ async def create_completion(
     elif isinstance(params, PracticeCompletionParams):
         problem_content = _get_problem_content(params, db)
 
-    response, reference_list, timer = await generate_chat_response(
-        params.messages,
+    # Dispatch to chat or tutor pipeline
+    pipeline_fn = run_tutor_pipeline if params.tutor_mode else run_chat_pipeline
+    result = await pipeline_fn(
+        messages=params.messages,
         user_focus=getattr(params, 'user_focus', None),
         answer_content=getattr(params, 'answer_content', None),
         problem_content=problem_content,
@@ -119,32 +122,14 @@ async def create_completion(
         engine=llm_engine,
         audio_response=params.audio_response,
         sid=sid,
-        tutor_mode=params.tutor_mode,
-        timer=timer
+        timer=timer,
+        audio_text=audio_text,
     )
 
     if params.stream:
-        return StreamingResponse(
-            chat_stream_parser(
-                response,
-                reference_list,
-                params.audio_response,
-                audio_text=audio_text,
-                messages=format_chat_msg(
-                    params.messages,
-                    tutor_mode=params.tutor_mode,
-                    audio_response=params.audio_response
-                ),
-                engine=llm_engine,
-                old_sid=sid,
-                course_code=params.course_code,
-                tutor_mode=params.tutor_mode,
-                timer=timer
-            ),
-            media_type="text/event-stream"
-        )
+        return StreamingResponse(result, media_type="text/event-stream")
     else:
-        return JSONResponse(ResponseDelta(text=response).model_dump_json(exclude_unset=True))
+        return JSONResponse(ResponseDelta(text=result).model_dump_json(exclude_unset=True))
 
 @router.post("/tts")
 async def text_to_speech(
