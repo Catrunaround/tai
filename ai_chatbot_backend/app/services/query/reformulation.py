@@ -68,6 +68,8 @@ async def build_retrieval_query(
         {"role": "user", "content": request_content}
     ]
 
+    print(f"[DEBUG] Reformulation input ({len(request_content)} chars):\n{request_content[:2000]}...")
+
     client = get_vllm_chat_client()
     response = await client.chat.completions.create(
         model=settings.vllm_chat_model,

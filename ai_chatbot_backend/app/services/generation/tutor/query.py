@@ -7,7 +7,7 @@ from app.services.generation.message_format import format_chat_msg
 from app.services.query.reformulation import build_retrieval_query
 from app.services.query.prompt_assembly import build_augmented_prompt
 from app.services.query.file_context import build_file_augmented_context
-from app.services.query.vector_search import get_file_descriptions_by_course
+from app.services.query.vector_search import get_relevant_file_descriptions
 from app.services.request_timer import RequestTimer
 
 
@@ -87,7 +87,7 @@ async def build_tutor_context(
     if timer:
         timer.mark("query_reformulation_start")
 
-    course_descriptions = get_file_descriptions_by_course(course) if course else None
+    course_descriptions = get_relevant_file_descriptions(user_message, course) if course else None
 
     query_message = await build_retrieval_query(user_message, previous_memory,
                                                 filechat_file_sections, filechat_focused_chunk,

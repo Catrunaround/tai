@@ -1,7 +1,7 @@
 import time
 from typing import Dict, List, Optional, Tuple
 
-from app.services.query.vector_search import get_reference_documents
+from app.services.query.vector_search import get_reference_documents, get_file_descriptions_by_uuids
 from app.services.generation.prompts import modes
 from app.services.request_timer import RequestTimer
 
@@ -57,24 +57,35 @@ def build_augmented_prompt(
         top_file_uuids, top_chunk_idxs
     ), class_name = get_reference_documents(query_message, course, top_k=top_k, timer=timer)
     # Prepare the insert document and reference list
+    # Collect file UUIDs that pass threshold, then batch-fetch their descriptions
+    passing_indices = [i for i in range(len(top_docs)) if similarity_scores[i] > threshold]
+    file_desc_map = {}
+    if passing_indices:
+        uuids_needed = [top_file_uuids[i] for i in passing_indices]
+        file_desc_map = get_file_descriptions_by_uuids(uuids_needed)
+
     insert_document = ""
     reference_list = reference_list or []
     n = len(reference_list)
-    for i in range(len(top_docs)):
-        if similarity_scores[i] > threshold:
-            n += 1
-            file_path = top_files[i]
-            file_uuid = top_file_uuids[i]
-            chunk_index = top_chunk_idxs[i]
-            topic_path = top_refs[i]
-            url = top_urls[i] if top_urls[i] else ""
-            insert_document += (
-                f'Reference Number: {n}\n'
-                f"Directory Path to reference file to tell what file is about: {file_path}\n"
-                f"Topic Path of chunk in file to tell the topic of chunk: {topic_path}\n"
-                f'Document: {top_docs[i]}\n\n'
-            )
-            reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
+    for i in passing_indices:
+        n += 1
+        file_path = top_files[i]
+        file_uuid = top_file_uuids[i]
+        chunk_index = top_chunk_idxs[i]
+        topic_path = top_refs[i]
+        url = top_urls[i] if top_urls[i] else ""
+        file_desc = file_desc_map.get(file_uuid, "")
+        insert_document += (
+            f'Reference Number: {n}\n'
+            f"Directory Path to reference file to tell what file is about: {file_path}\n"
+        )
+        if file_desc:
+            insert_document += f"File Description: {file_desc}\n"
+        insert_document += (
+            f"Topic Path of chunk in file to tell the topic of chunk: {topic_path}\n"
+            f'Document: {top_docs[i]}\n\n'
+        )
+        reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
 
     # Get mode configuration - single source of truth
     config = modes.get_mode_config(tutor_mode, audio_response)

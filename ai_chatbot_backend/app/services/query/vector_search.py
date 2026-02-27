@@ -88,38 +88,104 @@ def get_sections_by_file_uuid(file_uuid: UUID) -> List[Dict[int, Any]]:
         sections = json.loads(rows["sections"]) if rows and rows["sections"] else []
     return sections
 
-def get_file_descriptions_by_course(course: str) -> List[Dict[str, str]]:
+def get_file_descriptions_by_uuids(file_uuids: List[str]) -> Dict[str, str]:
     """
-    Get all file descriptions for a given course code.
-    Cached per course, invalidated when DB data_version changes.
+    Get file descriptions for a list of file UUIDs.
+    Returns a dict mapping file_uuid -> description.
+    """
+    if not file_uuids:
+        return {}
+    unique_uuids = list(set(file_uuids))
+    placeholders = ",".join("?" for _ in unique_uuids)
+    with _get_cursor() as cur:
+        rows = cur.execute(f"""
+            SELECT uuid, description
+            FROM file
+            WHERE uuid IN ({placeholders})
+              AND description IS NOT NULL AND description != '';
+        """, unique_uuids).fetchall()
+    return {row["uuid"]: row["description"] for row in rows}
+
+
+def get_relevant_file_descriptions(query: str, course: str, top_k: int = 10) -> List[Dict[str, str]]:
+    """
+    Get the top-k most relevant file descriptions for a query using file-level embeddings.
+    The file-level index is cached per course, invalidated when DB data_version changes.
     """
     if not course or course == "general":
         return []
 
+    # Build or retrieve cached file-level description index
+    idx = _get_file_desc_index(course)
+    if idx.get("M") is None:
+        return []
+
+    # Embed the query
+    qv = _get_embedding(query)
+    if qv.size == 0:
+        return []
+
+    # Dot product similarity
+    scores = idx["M"] @ qv
+    k = min(top_k, idx["M"].shape[0])
+    top_idx = np.argpartition(scores, -k)[-k:]
+    top_idx = top_idx[np.argsort(scores[top_idx])[::-1]]
+
+    return [
+        {"file_name": idx["file_names"][i], "description": idx["descriptions"][i]}
+        for i in top_idx
+    ]
+
+
+def _get_file_desc_index(course: str) -> Dict[str, Any]:
+    """
+    Build or retrieve cached file-level description index for a course.
+    """
     with _get_cursor() as cur:
         dv_now = cur.execute("PRAGMA data_version").fetchone()[0]
 
     with _desc_lock:
         cached = _desc_cache.get(course)
-    if cached is not None and cached["dv"] == dv_now:
-        return cached["descriptions"]
+    if cached is not None and cached["dv"] == dv_now and cached.get("M") is not None:
+        return cached
 
     with _get_cursor() as cur:
         rows = cur.execute("""
-            SELECT file_name, description
+            SELECT file_name, description, vector
             FROM file
             WHERE course_code = ?
-              AND description IS NOT NULL
-              AND description != ''
-            ORDER BY file_name;
+              AND description IS NOT NULL AND description != ''
+              AND vector IS NOT NULL;
         """, (course,)).fetchall()
 
-    descriptions = [{"file_name": row["file_name"], "description": row["description"]} for row in rows]
+    file_names, descriptions, vectors = [], [], []
+    dim = None
+    for r in rows:
+        v = _decode_vec_from_db(r["vector"])
+        if v is None:
+            continue
+        if dim is None:
+            dim = v.size
+        if v.size != dim:
+            continue
+        file_names.append(r["file_name"] or "")
+        descriptions.append(r["description"] or "")
+        vectors.append(v.astype(np.float32, copy=False))
+
+    if not vectors:
+        idx = {"dv": dv_now, "M": None}
+    else:
+        idx = {
+            "dv": dv_now,
+            "M": np.vstack(vectors),
+            "file_names": file_names,
+            "descriptions": descriptions,
+        }
 
     with _desc_lock:
-        _desc_cache[course] = {"dv": dv_now, "descriptions": descriptions}
+        _desc_cache[course] = idx
 
-    return descriptions
+    return idx
 
 
 def get_file_related_documents(

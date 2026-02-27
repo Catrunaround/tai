@@ -6,6 +6,6 @@ from .vector_search import (
     get_chunks_by_file_uuid,
     get_sections_by_file_uuid,
     get_file_related_documents,
-    get_file_descriptions_by_course,
+    get_relevant_file_descriptions,
 )
 from .course_mapping import top_k_selector  # deprecated but still used by /top_k_docs endpoint
