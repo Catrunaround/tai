@@ -33,22 +33,24 @@ async def run_tutor_pipeline(
         audio_response=audio_response,
     )
 
-    # Step 2: Generate — call LLM
+    # Step 2: Generate — call LLM (outline mode for tutor)
     if not stream:
         response = await call_tutor_model(
             context.messages, engine, stream=False,
-            audio_response=audio_response, course=course
+            audio_response=audio_response, course=course,
+            outline_mode=True,
         )
         return response
 
     raw_stream = await call_tutor_model(
         context.messages, engine, stream=True,
-        audio_response=audio_response, course=course
+        audio_response=audio_response, course=course,
+        outline_mode=True,
     )
 
-    # Step 3: Handler — process streaming output
-    from .handler import TutorHandler
-    handler = TutorHandler(
+    # Step 3: Handler — use OutlineHandler for outline mode
+    from .handler import OutlineHandler
+    handler = OutlineHandler(
         stream=raw_stream,
         reference_list=context.reference_list,
         audio_response=audio_response,

@@ -92,11 +92,23 @@ class OpenAIModelClient:
         use_responses_api = self._should_use_responses_api(self.model) and hasattr(self.client, "responses")
 
         if use_responses_api:
+            system_parts = []
+            non_system_messages = []
+            for msg in messages:
+                role = msg.get("role", "") if isinstance(msg, dict) else getattr(msg, "role", "")
+                content = msg.get("content", "") if isinstance(msg, dict) else getattr(msg, "content", "")
+                if role in ("system", "developer"):
+                    system_parts.append(content)
+                else:
+                    non_system_messages.append(msg)
+
             response_params = {
                 "model": self.model,
-                "input": messages,
+                "input": non_system_messages,
                 "stream": stream,
             }
+            if system_parts:
+                response_params["instructions"] = "\n\n".join(system_parts)
             if temperature is not None:
                 response_params["temperature"] = temperature
             if max_tokens is not None:

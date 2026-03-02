@@ -5,9 +5,9 @@ from typing import Any, List, Optional, Tuple
 from app.core.models.chat_completion import Message, UserFocus
 from app.services.generation.message_format import format_chat_msg
 from app.services.query.reformulation import build_retrieval_query
-from app.services.query.prompt_assembly import build_augmented_prompt
+from app.services.query.prompt_assembly import build_augmented_prompt, build_prompt_from_refs
 from app.services.query.file_context import build_file_augmented_context
-from app.services.query.vector_search import get_relevant_file_descriptions
+from app.services.query.vector_search import get_relevant_file_descriptions, get_two_stage_references
 from app.services.request_timer import RequestTimer
 
 
@@ -93,24 +93,35 @@ async def build_tutor_context(
                                                 filechat_file_sections, filechat_focused_chunk,
                                                 course_descriptions=course_descriptions)
 
+    if not query_message:
+        print("[WARNING] Reformulation returned empty query, falling back to original user message")
+        query_message = user_message
+
     if timer:
         timer.mark("query_reformulation_end")
 
     print(f"[INFO] Preprocessing time: {time.time() - t0:.2f} seconds")
 
-    # 5. Prompt assembly with RAG retrieval (tutor_mode=True)
-    modified_message, reference_list, system_add_message = build_augmented_prompt(
-        user_message,
+    # 5. Two-stage retrieval + outline prompt assembly
+    refs, class_name = get_two_stage_references(
+        query_message,
         course if course else "",
-        0.32,  # threshold
-        True,  # rag enabled
-        top_k=7,
+        top_k_files=7,
+        top_k_chunks_per_file=3,
+        threshold=0.32,
+        timer=timer,
+    )
+
+    modified_message, reference_list, system_add_message = build_prompt_from_refs(
+        user_message=user_message,
+        course=course if course else "",
+        class_name=class_name,
+        refs=refs,
         problem_content=problem_content,
         answer_content=answer_content,
-        query_message=query_message,
         audio_response=audio_response,
         tutor_mode=True,
-        timer=timer
+        outline_mode=True,
     )
 
     messages[-1].content += modified_message

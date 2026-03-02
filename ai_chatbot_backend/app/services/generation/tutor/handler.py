@@ -102,3 +102,57 @@ class TutorHandler(BaseStreamHandler):
             }
 
         return mentioned
+
+
+class OutlineHandler(BaseStreamHandler):
+    """
+    Step 3 handler for outline tutor mode.
+
+    Streams raw JSON output (no block extraction or citation open/close events).
+    After stream ends, extracts reference IDs from the outline bullets.
+    """
+
+    def transform_delta(self, channel: str, full_text: str, ctx: StreamContext) -> Optional[str]:
+        # Pass through raw delta for all channels
+        delta = full_text[len(ctx.previous_channels.get(channel, "")):]
+        return delta if delta.strip() else None
+
+    def transform_delta_with_citations(
+        self, channel: str, full_text: str, ctx: StreamContext
+    ) -> TransformResult:
+        """No citation open/close events — just text deltas."""
+        text = full_text[len(ctx.previous_channels.get(channel, "")):]
+        if text and text.strip():
+            return TransformResult(events=[BlockStreamEvent(text_delta=text)])
+        return TransformResult()
+
+    def extract_references(self, final_text: str) -> Set[int]:
+        """Extract all reference IDs from outline bullets."""
+        mentioned = set()
+        try:
+            text = final_text.strip()
+            if text.startswith('```'):
+                text = re.sub(r'^```(?:json)?\s*\n?', '', text)
+                text = re.sub(r'\n?```\s*$', '', text)
+
+            json_data = json.loads(text)
+
+            # Outline structure: {"title": "...", "bullets": [{"references": [1, 2]}]}
+            if isinstance(json_data, dict) and isinstance(json_data.get("bullets"), list):
+                for bullet in json_data["bullets"]:
+                    if not isinstance(bullet, dict):
+                        continue
+                    refs = bullet.get("references", [])
+                    if isinstance(refs, list):
+                        for ref_id in refs:
+                            try:
+                                mentioned.add(int(ref_id))
+                            except (TypeError, ValueError):
+                                continue
+
+            print(f"\n[INFO] Outline mentioned references: {mentioned}")
+
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            print(f"\n[WARNING] Failed to parse outline JSON: {e}")
+
+        return mentioned

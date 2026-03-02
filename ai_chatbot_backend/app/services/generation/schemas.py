@@ -154,3 +154,61 @@ VOICE_TUTOR_OPENAI_FORMAT = {
         "schema": VOICE_TUTOR_RESPONSE_SCHEMA
     }
 }
+
+# ========================
+# Outline JSON Schema (for tutor outline mode)
+# ========================
+
+OUTLINE_BULLET_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "point": {
+            "type": "string",
+            "description": "The teaching goal for this page — what the student should learn."
+        },
+        "purpose": {
+            "type": "string",
+            "description": (
+                "A model-facing instruction for the downstream content generator. "
+                "Describes HOW to explain this page's knowledge to the student: "
+                "what pedagogical approach to use, what examples or analogies to include, "
+                "what depth of detail to aim for, and how to structure the explanation. "
+                "Not shown to students."
+            )
+        },
+        "references": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "minItems": 1,
+            "description": "Reference numbers that provide evidence for this teaching point. At least one required."
+        },
+    },
+    "required": ["point", "purpose", "references"],
+    "additionalProperties": False
+}
+
+OUTLINE_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string",
+            "description": "A clear, descriptive title for this teaching outline."
+        },
+        "bullets": {
+            "type": "array",
+            "items": OUTLINE_BULLET_SCHEMA,
+            "description": "Ordered list of page teaching goals with supporting evidence."
+        },
+    },
+    "required": ["title", "bullets"],
+    "additionalProperties": False
+}
+
+OUTLINE_OPENAI_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "tutor_outline",
+        "strict": True,
+        "schema": OUTLINE_JSON_SCHEMA
+    }
+}

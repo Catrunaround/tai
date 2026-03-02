@@ -151,14 +151,14 @@ def _get_file_desc_index(course: str) -> Dict[str, Any]:
 
     with _get_cursor() as cur:
         rows = cur.execute("""
-            SELECT file_name, description, vector
+            SELECT uuid, file_name, description, vector
             FROM file
             WHERE course_code = ?
               AND description IS NOT NULL AND description != ''
               AND vector IS NOT NULL;
         """, (course,)).fetchall()
 
-    file_names, descriptions, vectors = [], [], []
+    file_uuids, file_names, descriptions, vectors = [], [], [], []
     dim = None
     for r in rows:
         v = _decode_vec_from_db(r["vector"])
@@ -168,6 +168,7 @@ def _get_file_desc_index(course: str) -> Dict[str, Any]:
             dim = v.size
         if v.size != dim:
             continue
+        file_uuids.append(r["uuid"] or "")
         file_names.append(r["file_name"] or "")
         descriptions.append(r["description"] or "")
         vectors.append(v.astype(np.float32, copy=False))
@@ -178,6 +179,7 @@ def _get_file_desc_index(course: str) -> Dict[str, Any]:
         idx = {
             "dv": dv_now,
             "M": np.vstack(vectors),
+            "file_uuids": file_uuids,
             "file_names": file_names,
             "descriptions": descriptions,
         }
@@ -186,6 +188,129 @@ def _get_file_desc_index(course: str) -> Dict[str, Any]:
         _desc_cache[course] = idx
 
     return idx
+
+
+def get_two_stage_references(
+    query: str,
+    course: str,
+    top_k_files: int = 7,
+    top_k_chunks_per_file: int = 3,
+    threshold: float = 0.32,
+    timer: Optional["RequestTimer"] = None,
+) -> Tuple[Tuple[List[str], List[str], List[str], List[float], List[str], List[str], List[str], List[str], List[float]], str]:
+    """
+    Two-stage retrieval for tutor mode:
+      Stage 1 — rank files by description embedding, keep top_k_files.
+      Stage 2 — within each selected file, rank chunks and keep top_k_chunks_per_file.
+    Returns the same 9-tuple + class_name as get_reference_documents.
+    """
+    class_name = _get_pickle_and_class(course)
+    empty = ([], [], [], [], [], [], [], [], [])
+
+    if not course or course == "general":
+        return empty, class_name
+
+    # ── Embed query once ──────────────────────────────────────────────
+    if timer:
+        timer.mark("embedding_start")
+    t0 = time.time()
+    qv = _get_embedding(query)
+    if timer:
+        timer.mark("embedding_end")
+    print(f"[INFO] Embedding time: {time.time() - t0:.2f} seconds")
+
+    if qv.size == 0:
+        return empty, class_name
+
+    # ── Stage 1: select top files by description similarity ───────────
+    if timer:
+        timer.mark("retrieval_start")
+    t1 = time.time()
+
+    desc_idx = _get_file_desc_index(course)
+    if desc_idx.get("M") is None:
+        if timer:
+            timer.mark("retrieval_end")
+        return empty, class_name
+
+    file_scores = desc_idx["M"] @ qv
+    k_files = min(top_k_files, desc_idx["M"].shape[0])
+    top_file_idx = np.argpartition(file_scores, -k_files)[-k_files:]
+    top_file_idx = top_file_idx[np.argsort(file_scores[top_file_idx])[::-1]]
+    selected_file_uuids = {desc_idx["file_uuids"][i] for i in top_file_idx}
+
+    # Debug: print selected files with scores
+    for i in top_file_idx:
+        fname = desc_idx["file_names"][i]
+        fuuid = desc_idx["file_uuids"][i]
+        fscore = float(file_scores[i])
+        print(f"[DEBUG] Stage 1 file: {fname} (score={fscore:.4f}, uuid={fuuid[:8]}...)")
+
+    print(f"[INFO] Two-stage: selected {len(selected_file_uuids)} files from descriptions")
+
+    # ── Stage 2: within selected files, pick top chunks per file ──────
+    chunk_idx = _get_course_index(course)
+    if chunk_idx.get("M") is None:
+        if timer:
+            timer.mark("retrieval_end")
+        return empty, class_name
+
+    chunk_file_uuids = chunk_idx["file_uuids"]
+    chunk_matrix = chunk_idx["M"]
+    all_chunk_scores = chunk_matrix @ qv
+
+    # Collect top chunks per file
+    result_indices: List[int] = []
+    result_scores: List[float] = []
+
+    for file_uuid in selected_file_uuids:
+        mask = np.array([fu == file_uuid for fu in chunk_file_uuids], dtype=bool)
+        if not mask.any():
+            print(f"[DEBUG] Stage 2: no chunks found for file uuid={file_uuid[:8]}...")
+            continue
+        file_chunk_indices = np.where(mask)[0]
+        file_chunk_scores = all_chunk_scores[file_chunk_indices]
+
+        k_chunks = min(top_k_chunks_per_file, len(file_chunk_indices))
+        top_sub = np.argpartition(file_chunk_scores, -k_chunks)[-k_chunks:]
+        picked = 0
+        for si in top_sub:
+            orig_i = int(file_chunk_indices[si])
+            score = float(file_chunk_scores[si])
+            if score > threshold:
+                result_indices.append(orig_i)
+                result_scores.append(score)
+                picked += 1
+        fpath = chunk_idx["file_paths"][file_chunk_indices[0]] if len(file_chunk_indices) > 0 else "?"
+        print(f"[DEBUG] Stage 2: file uuid={file_uuid[:8]}... ({fpath}) -> {len(file_chunk_indices)} chunks, picked {picked} above threshold")
+
+    if timer:
+        timer.mark("retrieval_end")
+    print(f"[INFO] Two-stage retrieval time: {time.time() - t1:.2f} seconds")
+
+    if not result_indices:
+        return empty, class_name
+
+    # Sort by score descending
+    order = np.argsort(result_scores)[::-1]
+    result_indices = [result_indices[i] for i in order]
+    result_scores = [result_scores[i] for i in order]
+
+    # Extract fields
+    top_chunk_uuids = [chunk_idx["chunk_uuids"][i] for i in result_indices]
+    top_texts = [chunk_idx["texts"][i] for i in result_indices]
+    top_urls = [chunk_idx["urls"][i] for i in result_indices]
+    top_file_paths = [chunk_idx["file_paths"][i] for i in result_indices]
+    top_reference_paths = [chunk_idx["reference_paths"][i] for i in result_indices]
+    top_titles = [chunk_idx["titles"][i] for i in result_indices]
+    top_file_uuids = [chunk_idx["file_uuids"][i] for i in result_indices]
+    top_chunk_idxs = [chunk_idx["chunk_idxs"][i] for i in result_indices]
+
+    print(f"[INFO] Two-stage: {len(result_indices)} chunks passed threshold {threshold}")
+
+    return (top_chunk_uuids, top_texts, top_urls, result_scores,
+            top_file_paths, top_reference_paths, top_titles,
+            top_file_uuids, top_chunk_idxs), class_name
 
 
 def get_file_related_documents(

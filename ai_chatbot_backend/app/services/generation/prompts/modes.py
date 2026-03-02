@@ -24,6 +24,8 @@ from app.services.generation.prompts.textchat import (
     TUTOR_PROMPT_NO_REFS as TEXT_CHAT_TUTOR_NO_REFS,
     REGULAR_PROMPT_WITH_REFS as TEXT_CHAT_REGULAR_WITH_REFS,
     REGULAR_PROMPT_NO_REFS as TEXT_CHAT_REGULAR_NO_REFS,
+    OUTLINE_PROMPT_WITH_REFS as TEXT_OUTLINE_TUTOR_WITH_REFS,
+    OUTLINE_PROMPT_NO_REFS as TEXT_OUTLINE_TUTOR_NO_REFS,
 )
 from app.services.generation.prompts.voice import (
     TUTOR_PROMPT_WITH_REFS as VOICE_TUTOR_WITH_REFS,
@@ -34,11 +36,12 @@ from app.services.generation.prompts.voice import (
 
 
 class Mode(Enum):
-    """Enumeration of the 4 operating modes."""
+    """Enumeration of the operating modes."""
     TEXT_CHAT_TUTOR = auto()    # tutor_mode=True, audio_response=False
     TEXT_CHAT_REGULAR = auto()  # tutor_mode=False, audio_response=False
     VOICE_TUTOR = auto()        # tutor_mode=True, audio_response=True
     VOICE_REGULAR = auto()      # tutor_mode=False, audio_response=True
+    TEXT_OUTLINE_TUTOR = auto() # outline mode for tutor
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,13 @@ MODE_CONFIGS = {
         is_tutor=False,
         is_audio=True,
     ),
+    Mode.TEXT_OUTLINE_TUTOR: ModeConfig(
+        mode=Mode.TEXT_OUTLINE_TUTOR,
+        system_prompt_with_refs=TEXT_OUTLINE_TUTOR_WITH_REFS,
+        system_prompt_no_refs=TEXT_OUTLINE_TUTOR_NO_REFS,
+        is_tutor=True,
+        is_audio=False,
+    ),
 }
 
 
@@ -101,6 +111,11 @@ def get_mode_config(tutor_mode: bool, audio_response: bool) -> ModeConfig:
     """
     mode = get_mode(tutor_mode, audio_response)
     return MODE_CONFIGS[mode]
+
+
+def get_outline_mode_config() -> ModeConfig:
+    """Get the outline tutor mode configuration."""
+    return MODE_CONFIGS[Mode.TEXT_OUTLINE_TUTOR]
 
 
 def get_complete_system_prompt(

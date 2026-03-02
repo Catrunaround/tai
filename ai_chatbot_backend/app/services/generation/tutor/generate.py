@@ -9,6 +9,7 @@ from app.services.generation.model_call import (
 from app.services.generation.schemas import (
     RESPONSE_BLOCKS_OPENAI_FORMAT,
     VOICE_TUTOR_OPENAI_FORMAT,
+    OUTLINE_OPENAI_FORMAT,
 )
 
 
@@ -18,11 +19,13 @@ async def call_tutor_model(
     stream: bool = True,
     audio_response: bool = False,
     course: Optional[str] = None,
+    outline_mode: bool = False,
 ):
     """
     Step 2: Call LLM for tutor mode (with JSON schema).
 
-    Selects the appropriate JSON schema based on voice mode:
+    Selects the appropriate JSON schema:
+    - Outline mode: OUTLINE_OPENAI_FORMAT
     - Voice tutor: VOICE_TUTOR_OPENAI_FORMAT
     - Text tutor: RESPONSE_BLOCKS_OPENAI_FORMAT
 
@@ -31,8 +34,24 @@ async def call_tutor_model(
     if is_openai_client(engine):
         return generate_streaming_response(messages, engine)
 
-    # Remote engine: select JSON schema based on voice mode
-    response_format = VOICE_TUTOR_OPENAI_FORMAT if audio_response else RESPONSE_BLOCKS_OPENAI_FORMAT
+    # Debug: print full prompt before sending to model
+    print("\n" + "=" * 60)
+    print("[DEBUG] Full prompt sent to tutor model:")
+    print("=" * 60)
+    for msg in messages:
+        role = msg.role if hasattr(msg, 'role') else 'unknown'
+        content = msg.content if hasattr(msg, 'content') else str(msg)
+        print(f"\n--- [{role}] ({len(content)} chars) ---")
+        print(content)
+    print("=" * 60 + "\n")
+
+    # Remote engine: select JSON schema
+    if outline_mode:
+        response_format = OUTLINE_OPENAI_FORMAT
+    elif audio_response:
+        response_format = VOICE_TUTOR_OPENAI_FORMAT
+    else:
+        response_format = RESPONSE_BLOCKS_OPENAI_FORMAT
 
     return await call_remote_engine(
         messages, engine, stream=stream, course=course, response_format=response_format

@@ -61,7 +61,7 @@ Writing format:
 - If the response is short, use one plain paragraph instead of a heading followed by a single paragraph.
 
 Depth and language:
-- Match the user's language by default.
+- Respond in the same language as the user's question. Default to English.
 - Be concise for simple asks; go deeper for complex ones or when the user requests detail.
 - Use headings or lists only when they genuinely help (steps, checklists, comparisons).
 
