@@ -11,11 +11,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class SectionAspect(BaseModel):
+    """Individual aspect within a section"""
+    content: str = Field(..., description="The educational content")
+    type: str = Field(..., description="Type of content (Definition, Functions, etc.)")
+
+
+
 class Section(BaseModel):
     """Educational section with structured content"""
+    aspects: List[SectionAspect] = Field(..., description="List of content aspects")
     index: float = Field(..., description="Section order/position")
     key_concept: str = Field(..., description="Main topic of the section")
-    aspect: str = Field(..., description="Detailed explanation of the key concept")
     name: str = Field(..., description="Section title")
     checking_questions: Optional[List[str]] = Field(None, description="List of checking questions")
     comprehensive_questions: Optional[List[str]] = Field(None, description="List of comprehensive questions")
@@ -177,9 +184,22 @@ class FileMetadata(BaseModel):
                 "category": "document",
                 "sections": [
                     {
+                        "aspects": [
+                            {
+                                "content": "Computer storage is organized in four tiers: CPU Registers, Main Memory (RAM), File System, and Offline Storage.",
+                                "type": "Definition"
+                            },
+                            {
+                                "content": "Files live in the third tier - the file system. While slower than RAM, files provide the crucial ability to persist data between program runs.",
+                                "type": "Explanation of File System Tier"
+                            },
+                            {
+                                "content": "Files are essential for persistent data storage, allowing programs to save and retrieve information between sessions.",
+                                "type": "Purpose"
+                            }
+                        ],
                         "index": 3,
                         "key_concept": "Computer Storage Hierarchy and Role of File System",
-                        "aspect": "Computer storage is organized in four tiers: CPU Registers, Main Memory (RAM), File System, and Offline Storage. Files provide persistent data storage between program runs.",
                         "name": "Computer Storage Hierarchy"
                     },
                 ],
@@ -221,9 +241,22 @@ class FileListResponse(BaseModel):
                         "category": "document",
                         "sections": [
                             {
+                                "aspects": [
+                                    {
+                                        "content": "Computer storage is organized in four tiers: CPU Registers, Main Memory (RAM), File System, and Offline Storage.",
+                                        "type": "Definition"
+                                    },
+                                    {
+                                        "content": "Files live in the third tier - the file system. While slower than RAM, files provide the crucial ability to persist data between program runs.",
+                                        "type": "Explanation of File System Tier"
+                                    },
+                                    {
+                                        "content": "Files are essential for persistent data storage, allowing programs to save and retrieve information between sessions.",
+                                        "type": "Purpose"
+                                    }
+                                ],
                                 "index": 3,
                                 "key_concept": "Computer Storage Hierarchy and Role of File System",
-                                "aspect": "Computer storage is organized in four tiers: CPU Registers, Main Memory (RAM), File System, and Offline Storage. Files provide persistent data storage between program runs.",
                                 "name": "Computer Storage Hierarchy"
                             },
                         ],
@@ -306,9 +339,22 @@ class DirectoryBrowserResponse(BaseModel):
                         "course": "ROAR Academy",
                         "sections": [
                                 {
+                                    "aspects": [
+                                        {
+                                            "content": "Computer storage is organized in four tiers: CPU Registers, Main Memory (RAM), File System, and Offline Storage.",
+                                            "type": "Definition"
+                                        },
+                                        {
+                                            "content": "Files live in the third tier - the file system. While slower than RAM, files provide the crucial ability to persist data between program runs.",
+                                            "type": "Explanation of File System Tier"
+                                        },
+                                        {
+                                            "content": "Files are essential for persistent data storage, allowing programs to save and retrieve information between sessions.",
+                                            "type": "Purpose"
+                                        }
+                                    ],
                                     "index": 3,
                                     "key_concept": "Computer Storage Hierarchy and Role of File System",
-                                    "aspect": "Computer storage is organized in four tiers: CPU Registers, Main Memory (RAM), File System, and Offline Storage. Files provide persistent data storage between program runs.",
                                     "name": "Computer Storage Hierarchy"
                                 },
                             ],
