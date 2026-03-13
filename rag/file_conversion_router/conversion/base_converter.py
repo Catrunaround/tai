@@ -149,15 +149,27 @@ class BaseConverter(ABC):
         if metadata_path.exists():
             try:
                 with open(metadata_path, "r") as metadata_file:
-                    return yaml.safe_load(metadata_file)
+                    metadata = yaml.safe_load(metadata_file)
+                    if metadata:
+                        url = metadata.get("URL", "")
+                        if not url:
+                            self._logger.warning(
+                                f"URL field is empty or missing in metadata file: {metadata_path}"
+                            )
+                        return metadata
+                    else:
+                        self._logger.warning(
+                            f"Metadata file is empty: {metadata_path}"
+                        )
+                        return {"URL": ""}
             except Exception as e:
                 self._logger.error(f"Error reading metadata file: {str(e)}")
-                return {"URL": "", }
+                return {"URL": ""}
         else:
             self._logger.warning(
                 f"Metadata file not found: {metadata_path}. Using mocked metadata."
             )
-            return {"URL": "", }
+            return {"URL": ""}
 
     @conversion_logger
     def _perform_conversion(self, input_path: Path, output_folder: Path) -> Tuple[List[Chunk], dict]:
@@ -207,7 +219,16 @@ class BaseConverter(ABC):
             content_dict = {}
 
         metadata_content = self._read_metadata(metadata_path)
-        metadata_content = {'URL': ''} if not metadata_content else {'URL': metadata_content.get('URL', '')}
+        original_url = metadata_content.get('URL', '') if metadata_content else ''
+
+        # If URL is missing for HTML files, raise an error
+        if not original_url and self.file_type == "html":
+            raise ValueError(
+                f"HTML file '{self.file_name}' is missing required original_url in metadata. "
+                f"Expected metadata file at: {metadata_path}"
+            )
+
+        metadata_content = {'URL': original_url}
         metadata = self._put_content_dict_to_metadata(
             content_dict=content_dict,
             metadata_content=metadata_content,

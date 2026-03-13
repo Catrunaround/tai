@@ -175,49 +175,65 @@ def _merge_single_course_db(
     deletion_stats = _delete_course_data_from_collective(collective_conn, course_code)
     stats["deleted"] = deletion_stats
 
+    # Check which timestamp columns exist in collective database (once, outside loop)
+    collective_columns = [col[1] for col in collective_conn.execute("PRAGMA table_info(file)").fetchall()]
+
     # Since we deleted all existing data for this course, simply insert all files
     for file_row in files:
         file_uuid = file_row['uuid']
 
         # Insert file (no need to check for conflicts since we deleted all course data)
-        # Check which timestamp columns exist in collective database
-        collective_columns = [col[1] for col in collective_conn.execute("PRAGMA table_info(file)").fetchall()]
-
         # Get source row keys (sqlite3.Row supports .keys() but not .get())
         source_keys = file_row.keys()
 
         # Prepare timestamp values based on available columns
         ingested_time = None
+        created_at = None
         update_time = None
 
         if 'ingested_time' in collective_columns:
-            # Try to get ingested_time or created_at from source
+            # Try to get ingested_time or created_at from source (backward compat for old DBs)
             if 'ingested_time' in source_keys:
                 ingested_time = file_row['ingested_time']
             elif 'created_at' in source_keys:
                 ingested_time = file_row['created_at']
+
+        if 'created_at' in collective_columns:
+            # Try to get created_at from source, fallback to ingested_time for old DBs
+            if 'created_at' in source_keys:
+                created_at = file_row['created_at']
+            elif 'ingested_time' in source_keys:
+                created_at = file_row['ingested_time']
 
         if 'update_time' in collective_columns:
             if 'update_time' in source_keys:
                 update_time = file_row['update_time']
 
         # Build INSERT statement dynamically based on collective schema
-        base_columns = "uuid, file_hash, sections, relative_path, course_code, course_name, file_name, description, extra_info, url"
-        base_values = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+        base_columns = "uuid, file_hash, sections, relative_path, course_code, course_name, file_name, description, extra_info, url, vector"
+        base_values = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
 
         # Handle description field - may not exist in older databases
         description_value = file_row['description'] if 'description' in source_keys else None
+        # Handle vector field (file embedding) - may not exist in older databases
+        vector_value = file_row['vector'] if 'vector' in source_keys else None
 
         base_params = [
             file_row['uuid'], file_row['file_hash'], file_row['sections'],
             file_row['relative_path'], file_row['course_code'], file_row['course_name'],
-            file_row['file_name'], description_value, file_row['extra_info'], file_row['url']
+            file_row['file_name'], description_value, file_row['extra_info'], file_row['url'],
+            vector_value
         ]
 
         if 'ingested_time' in collective_columns:
             base_columns += ", ingested_time"
             base_values += ", COALESCE(?, datetime('now', 'localtime'))"
             base_params.append(ingested_time)
+
+        if 'created_at' in collective_columns:
+            base_columns += ", created_at"
+            base_values += ", COALESCE(?, datetime('now', 'localtime'))"
+            base_params.append(created_at)
 
         if 'update_time' in collective_columns:
             base_columns += ", update_time"
@@ -234,15 +250,20 @@ def _merge_single_course_db(
         # Insert chunks for this file
         chunks = course_conn.execute("SELECT * FROM chunks WHERE file_uuid = ?", (file_uuid,)).fetchall()
         for chunk_row in chunks:
+            # Get chunk source keys
+            chunk_keys = chunk_row.keys()
+            # Handle vector field (chunk embedding) - may not exist in older databases
+            chunk_vector_value = chunk_row['vector'] if 'vector' in chunk_keys else None
+
             collective_conn.execute("""
                 INSERT OR REPLACE INTO chunks (chunk_uuid, file_uuid, idx, text, title, url,
-                                             file_path, reference_path, course_name, course_code, chunk_index)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                             file_path, reference_path, course_name, course_code, chunk_index, vector)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 chunk_row['chunk_uuid'], chunk_row['file_uuid'], chunk_row['idx'],
                 chunk_row['text'], chunk_row['title'], chunk_row['url'],
                 chunk_row['file_path'], chunk_row['reference_path'], chunk_row['course_name'],
-                chunk_row['course_code'], chunk_row['chunk_index']
+                chunk_row['course_code'], chunk_row['chunk_index'], chunk_vector_value
             ))
             stats["chunks"] += 1
 
@@ -393,19 +414,23 @@ def split_course_from_collective(
         # Copy files and related data
         for file_row in files:
             file_uuid = file_row['uuid']
+            file_keys = file_row.keys()
 
             # Insert file into course database
             # Handle description field - may not exist in older databases
-            description_value = file_row['description'] if 'description' in file_row.keys() else None
+            description_value = file_row['description'] if 'description' in file_keys else None
+            # Handle vector field (file embedding) - may not exist in older databases
+            vector_value = file_row['vector'] if 'vector' in file_keys else None
 
             course_conn.execute("""
                 INSERT OR REPLACE INTO file (uuid, file_hash, sections, relative_path,
-                                           course_code, course_name, file_name, description, extra_info, url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                           course_code, course_name, file_name, description, extra_info, url, vector)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 file_row['uuid'], file_row['file_hash'], file_row['sections'],
                 file_row['relative_path'], file_row['course_code'], file_row['course_name'],
-                file_row['file_name'], description_value, file_row['extra_info'], file_row['url']
+                file_row['file_name'], description_value, file_row['extra_info'], file_row['url'],
+                vector_value
             ))
             split_stats["files"] += 1
 
@@ -415,15 +440,19 @@ def split_course_from_collective(
             ).fetchall()
 
             for chunk_row in chunks:
+                chunk_keys = chunk_row.keys()
+                # Handle vector field (chunk embedding) - may not exist in older databases
+                chunk_vector_value = chunk_row['vector'] if 'vector' in chunk_keys else None
+
                 course_conn.execute("""
                     INSERT OR REPLACE INTO chunks (chunk_uuid, file_uuid, idx, text, title, url,
-                                                 file_path, reference_path, course_name, course_code, chunk_index)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                                 file_path, reference_path, course_name, course_code, chunk_index, vector)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     chunk_row['chunk_uuid'], chunk_row['file_uuid'], chunk_row['idx'],
                     chunk_row['text'], chunk_row['title'], chunk_row['url'],
                     chunk_row['file_path'], chunk_row['reference_path'], chunk_row['course_name'],
-                    chunk_row['course_code'], chunk_row['chunk_index']
+                    chunk_row['course_code'], chunk_row['chunk_index'], chunk_vector_value
                 ))
                 split_stats["chunks"] += 1
 

@@ -1,7 +1,7 @@
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 import requests
 import time
-
+import re
 
 from .driver import Driver, Resp
 
@@ -160,7 +160,15 @@ class PlaywrightDriver(Driver):
                         print(f"⚠️  Skipping login-protected page: {url}")
                         raise Exception(f"LOGIN_REQUIRED: {url} requires authentication")
 
-                    filename = self._page.title().strip() or filename.rstrip('.html') + '.html'
+                    # Get page title safely and sanitize for filename
+                    title = self._page.title()
+                    if title:
+                        title = title.strip()
+                        # Sanitize title: remove invalid filename characters
+                        sanitized_title = re.sub(r'\s+', ' ', re.sub(r'[\\/:"*?<>|]+', ' ', title)).strip()
+                        filename = sanitized_title + '.html' if sanitized_title else filename.rstrip('.html') + '.html'
+                    else:
+                        filename = filename.rstrip('.html') + '.html'
 
                     with open(filename, "w", encoding="utf-8") as f:
                         f.write(html_content)

@@ -7,7 +7,9 @@ import re
 
 
 class RequestsDriver(Driver):
-    def __init__(self):
+    def __init__(self, timeout=30, max_retries=3, **kwargs):
+        self._timeout = timeout
+        self._max_retries = max_retries
         self.session = requests.Session()
         # Set modern browser headers to avoid bot detection
         self.session.headers.update({
@@ -29,14 +31,13 @@ class RequestsDriver(Driver):
         time.sleep(random.uniform(1.5, 3.0))
 
         # Retry mechanism for handling temporary failures
-        max_retries = 3
-        for attempt in range(max_retries):
+        for attempt in range(self._max_retries):
             try:
-                response = self.session.get(url, stream=True, timeout=30)
+                response = self.session.get(url, stream=True, timeout=self._timeout)
                 response.raise_for_status()  # Raise an exception for HTTP errors
                 break
             except requests.exceptions.RequestException as e:
-                if attempt == max_retries - 1:
+                if attempt == self._max_retries - 1:
                     raise e
                 # Exponential backoff for retries
                 time.sleep(2 ** attempt + random.uniform(0, 1))
@@ -44,11 +45,19 @@ class RequestsDriver(Driver):
         content_type = response.headers.get("Content-Type", "").lower()
 
         if "text/html" in content_type:
-            # Parse HTML and get the title
+            # Parse HTML and get the title safely
             soup = BeautifulSoup(response.text, 'html.parser')
-            title = soup.title.string.strip()
+            title = None
+            if soup.title and soup.title.string:
+                title = soup.title.string.strip()
 
-            filename = re.sub(r'\s+', ' ', re.sub(r'[\\/:"*?<>|]+', ' ', title)).strip() + '.html' if title else filename.rstrip('.html')+ '.html'
+            # Sanitize title for filename, fallback to original filename if no title
+            if title:
+                sanitized_title = re.sub(r'\s+', ' ', re.sub(r'[\\/:"*?<>|]+', ' ', title)).strip()
+                filename = sanitized_title + '.html' if sanitized_title else filename.rstrip('.html') + '.html'
+            else:
+                filename = filename.rstrip('.html') + '.html'
+
             with open(filename, "w", encoding="utf-8") as file:
                 file.write(response.text)
         else:

@@ -705,10 +705,10 @@ if __name__ == "__main__":
     # ===== SINGLE COURSE WORKFLOW =====
 
     # Convert and embed a single course
-    # convert_directory(
-    #     "/home/bot/bot/yk/YK_final/course_yaml/CS 294-137_config.yaml",
-    #     auto_embed=True
-    # )
+    convert_directory(
+        "/home/bot/bot/yk/YK_final/course_yaml/CS 61A_config.yaml",
+        auto_embed=True
+    )
 
     # ===== UTILITY FUNCTIONS =====
 
@@ -718,5 +718,6 @@ if __name__ == "__main__":
     # Get courses needing update
     # courses = get_courses_needing_update()
     # print(f"Courses needing update: {[c['name'] for c in courses]}")
-
-    pass
+#     merge_course_databases_into_collective(course_db_paths=["/home/bot/bot/yk/YK_final/courses_out/db/CS 61A_metadata.db"],
+#     collective_db_path="/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db"
+# )

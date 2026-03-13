@@ -10,7 +10,8 @@
       "Bash(bash:*)",
       "Bash(pip show:*)",
       "Bash(pip uninstall:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(find /home/bot/bot/yk/YK_final/tai/rag -name \"web_scraper.py\" 2>/dev/null; find /home/bot/bot/yk/YK_final/tai/rag -name \"*.py\" -path \"*/scraper*\" 2>/dev/null | head -20)"
     ],
     "deny": [],
     "ask": []
