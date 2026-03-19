@@ -1,10 +1,12 @@
 """
 Combined pages pipeline: generate query -> OpenAI outline -> OpenAI page content.
 
-Outline: OpenAI generates structured outline with needs_multiple_pages, outline titles, and bullets.
-Page content: OpenAI generates block-based narration with sub_bullets, citations, and reference open/close.
+Outline: OpenAI generates a depth-aware flat outline with inferred_depth,
+topic, and pages (ordered list of teaching pages).
+Page content: OpenAI generates block-based narration with sub_bullets, citations,
+and reference open/close.
 
-Pipelined: page 0 content generation starts as soon as bullet 0 is parsed
+Pipelined: page 0 content generation starts as soon as the first page is parsed
 from the streaming outline, rather than waiting for the entire outline.
 """
 import asyncio
@@ -77,14 +79,14 @@ async def run_generate_pages_pipeline(
         outline_mode=True,
     )
 
-    # === Step 4: Background task — collect outline, push bullets to queue ===
-    bullet_queue: asyncio.Queue = asyncio.Queue()
+    # === Step 4: Background task — collect outline, push leaf nodes to queue ===
+    node_queue: asyncio.Queue = asyncio.Queue()
     outline_holder: dict = {}  # mutable container for the parsed outline
 
     async def _collect_outline():
         outline_text = ""
         parsed_count = 0
-        titles_extracted = False
+        metadata_extracted = False
         async for chunk in raw_stream:
             if not hasattr(chunk, "choices") or not chunk.choices:
                 continue
@@ -94,55 +96,61 @@ async def run_generate_pages_pipeline(
                 continue
             outline_text += content
 
-            # Detect outline titles early (before bullets finish)
-            if not titles_extracted:
-                titles = _extract_outline_titles(outline_text)
-                if titles:
-                    outline_holder["data"] = titles
-                    titles_extracted = True
+            # Detect outline metadata early (before nodes finish)
+            if not metadata_extracted:
+                metadata = _extract_outline_metadata(outline_text)
+                if metadata:
+                    outline_holder["data"] = metadata
+                    metadata_extracted = True
 
-            # Try to extract newly completed bullets
-            new_bullets = _extract_new_bullets(outline_text, parsed_count)
-            for b in new_bullets:
-                await bullet_queue.put(b)
+            # Try to extract newly completed pages
+            new_leaves = _extract_new_pages(outline_text, parsed_count)
+            for node in new_leaves:
+                await node_queue.put(node)
                 parsed_count += 1
 
-        # Store the full parsed outline (overwrites early titles with complete data)
+        # Store the full parsed outline (overwrites early metadata with complete data)
         parsed = _parse_outline(outline_text)
         if parsed:
             outline_holder["data"] = parsed
-        elif not titles_extracted:
+            print("\n" + "=" * 60)
+            print("[DEBUG] Full parsed outline:")
+            print("=" * 60)
+            print(json.dumps(parsed, indent=2, ensure_ascii=False))
+            print("=" * 60 + "\n")
+        elif not metadata_extracted:
             print(f"[ERROR] Failed to parse outline JSON: {outline_text[:500]}")
             outline_holder["error"] = True
 
-        # Sentinel: no more bullets
-        await bullet_queue.put(None)
+        # Sentinel: no more nodes
+        await node_queue.put(None)
 
     outline_task = asyncio.create_task(_collect_outline())
 
-    # === Step 5: Generate pages as bullets arrive from the queue ===
-    page_idx = 0
+    # === Step 5: Generate pages as leaf nodes arrive from the queue ===
+    page_idx = 1
     outline_emitted = False
 
     while True:
-        bullet = await bullet_queue.get()
-        if bullet is None:
+        node = await node_queue.get()
+        if node is None:
             break
 
         try:
             page_refs = _resolve_page_references(
-                bullet.get("references", []),
+                node.get("reference_ids", []),
                 context.reference_list,
             )
 
             page_params = PageContentParams(
-                point=bullet["point"],
-                purpose=bullet["purpose"],
+                point=node["title"],
+                purpose=node["purpose"],
+                effort=node.get("effort", ""),
                 references=page_refs,
                 course_code=params.course_code,
             )
 
-            yield sse(PageStart(page_index=page_idx, point=bullet["point"], purpose=bullet["purpose"]))
+            yield sse(PageStart(page_index=page_idx, point=node["title"], purpose=node["purpose"]))
 
             # --- Generate page content via OpenAI (block-based JSON, streaming) ---
             page_messages = build_page_content_context(page_params)
@@ -251,38 +259,26 @@ async def run_generate_pages_pipeline(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _extract_outline_titles(text: str) -> Optional[dict]:
+def _extract_outline_metadata(text: str) -> Optional[dict]:
     """
-    Extract title + outline array from partial outline JSON (before bullets finish).
+    Extract inferred_depth + topic from partial outline JSON (before nodes finish).
 
-    The outline JSON streams: needs_multiple_pages → title → outline[] → bullets[].
-    Once the outline array is complete, we have all page titles needed for
-    outline.complete and Intro speech, without waiting for bullet details.
+    The outline JSON streams: thinking → inferred_depth → outline { topic → nodes[] }.
+    Once we have inferred_depth and topic, we can emit early metadata for the
+    OutlineComplete event, without waiting for all node details.
     """
-    # Try to extract the "outline" array (string items only)
-    match = re.search(r'"outline"\s*:\s*(\[.*?\])', text, re.DOTALL)
-    if not match:
+    depth_match = re.search(r'"inferred_depth"\s*:\s*"(minimal|standard)"', text)
+    topic_match = re.search(r'"topic"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+    if not depth_match or not topic_match:
         return None
-    try:
-        outline_arr = json.loads(match.group(1))
-        if not isinstance(outline_arr, list) or not outline_arr:
-            return None
-    except json.JSONDecodeError:
-        return None
-
-    # Extract title
-    title_match = re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
-    title = title_match.group(1) if title_match else ""
-
-    # Extract needs_multiple_pages
-    nmp_match = re.search(r'"needs_multiple_pages"\s*:\s*(true|false)', text)
-    needs_multiple = nmp_match.group(1) == "true" if nmp_match else len(outline_arr) > 1
 
     return {
-        "needs_multiple_pages": needs_multiple,
-        "title": title,
-        "outline": outline_arr,
-        "bullets": [],  # bullets not yet available
+        "thinking": "",
+        "inferred_depth": depth_match.group(1),
+        "outline": {
+            "topic": topic_match.group(1),
+            "pages": [],  # not yet available
+        },
     }
 
 
@@ -314,20 +310,20 @@ def _extract_sub_bullets(text: str) -> Optional[list]:
     return None
 
 
-def _extract_new_bullets(text: str, already_parsed: int) -> List[dict]:
+def _extract_new_pages(text: str, already_parsed: int) -> List[dict]:
     """
-    Incrementally extract complete bullet objects from partial outline JSON.
+    Incrementally extract complete page objects from partial outline JSON.
 
     Tracks brace depth (with string/escape awareness) to detect complete
-    {...} objects inside the "bullets" array.
+    {...} objects inside the "pages" array. All pages are returned in order.
     """
-    # Find the start of the bullets array
-    match = re.search(r'"bullets"\s*:\s*\[', text)
+    # Find the start of the pages array
+    match = re.search(r'"pages"\s*:\s*\[', text)
     if not match:
         return []
 
     start = match.end()
-    bullets: List[dict] = []
+    all_pages: List[dict] = []
     depth = 0
     obj_start = None
     in_string = False
@@ -357,14 +353,15 @@ def _extract_new_bullets(text: str, already_parsed: int) -> List[dict]:
             if depth == 0 and obj_start is not None:
                 try:
                     obj = json.loads(text[obj_start:i + 1])
-                    if "point" in obj and "purpose" in obj:
-                        bullets.append(obj)
+                    if "page_id" in obj and "title" in obj:
+                        all_pages.append(obj)
                 except json.JSONDecodeError:
                     pass
                 obj_start = None
 
-    # Return only newly parsed bullets
-    return bullets[already_parsed:]
+    # Return only newly parsed pages
+    return all_pages[already_parsed:]
+
 
 
 def _parse_outline(text: str) -> Optional[dict]:
@@ -375,7 +372,9 @@ def _parse_outline(text: str) -> Optional[dict]:
         text = re.sub(r"\n?```\s*$", "", text)
     try:
         data = json.loads(text)
-        if isinstance(data, dict) and "bullets" in data:
+        if (isinstance(data, dict)
+                and "outline" in data
+                and "pages" in data.get("outline", {})):
             return data
     except json.JSONDecodeError:
         pass
@@ -414,3 +413,155 @@ def _resolve_page_references(ref_ids: list, reference_list: list) -> List[PageRe
                 chunk_index=chunk_index,
             ))
     return page_refs
+
+
+# ---------------------------------------------------------------------------
+# Speech script generation (for TTS narration of pages)
+# ---------------------------------------------------------------------------
+
+PAGE_SPEECH_SYSTEM_PROMPT = """\
+You are TAI, a university tutor for {course_code}.
+You are speaking aloud to a student, explaining a topic page by page.
+Generate ONLY what you would say — natural, conversational, like a real lecture.
+
+Rules:
+- No markdown, no code fences, no bullet lists, no brackets.
+- When referencing code, describe it in words (e.g., "a function called make_adder that takes n").
+- Vary your pacing and transitions naturally.
+- Use the teaching purpose as your guide for HOW to explain.
+- Use the bullet points as your guide for WHAT to cover.
+- Keep it focused — this is one page of a multi-page lesson.
+- Do NOT repeat content that was already covered in a previous page's narration."""
+
+INTRO_SPEECH_SYSTEM_PROMPT = """\
+You are TAI, a university tutor for {course_code}.
+You are about to begin a spoken lesson for a student.
+Generate ONLY what you would say — natural, conversational, like a real lecture.
+
+Rules:
+- No markdown, no code fences, no bullet lists, no brackets.
+- Start by acknowledging the student's question and naturally transition into your answer.
+- Briefly preview what the lesson will cover.
+- Keep it concise — this is just the opening, not the full lesson."""
+
+
+async def generate_speech_script(
+    engine: Any,
+    course_code: str,
+    user_content: str,
+    system_prompt: Optional[str] = None,
+    temperature: float = 0.7,
+    max_tokens: int = 800,
+) -> str:
+    """Generate a speech script from the model, returning the full text."""
+    system = system_prompt or PAGE_SPEECH_SYSTEM_PROMPT.format(course_code=course_code)
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_content},
+    ]
+    stream = await engine(
+        user_content,
+        messages=messages,
+        stream=True,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    full_text = ""
+    async for chunk in stream:
+        if chunk.choices:
+            token = chunk.choices[0].delta.content
+            if token:
+                full_text += token
+    return full_text
+
+
+async def generate_intro_speech(
+    engine: Any,
+    course_code: str,
+    student_question: str,
+    topic: str,
+    total_pages: int,
+    page_titles: List[str],
+) -> str:
+    """
+    Generate the intro (page 0) speech that transitions from the student's
+    question into the lesson overview.
+
+    Returns:
+        The generated intro speech text.
+    """
+    titles_text = "\n".join(f"- {t}" for t in page_titles)
+    user_content = (
+        f'The student asked: "{student_question}"\n'
+        f'Lesson topic: "{topic}" ({total_pages} pages)\n'
+        f"Pages:\n{titles_text}\n\n"
+        f"Generate a brief spoken intro that acknowledges the student's question, "
+        f"transitions naturally into your answer, and previews what the lesson will cover."
+    )
+    system = INTRO_SPEECH_SYSTEM_PROMPT.format(course_code=course_code)
+    return await generate_speech_script(
+        engine, course_code, user_content, system_prompt=system,
+    )
+
+
+async def generate_page_speech(
+    engine: Any,
+    course_code: str,
+    page_idx: int,
+    page_title: str,
+    purpose: str,
+    sub_bullets: list,
+    total_pages: int,
+    previous_titles: List[str],
+    previous_speech: str = "",
+) -> str:
+    """
+    Generate a TTS speech script for a single content page.
+
+    Speech is generated sequentially: each page waits for the previous page's
+    speech to complete, and the previous page's speech content is included in
+    the prompt to avoid repetition.
+
+    Args:
+        engine: LLM engine callable.
+        course_code: Course identifier.
+        page_idx: Zero-based page index.
+        page_title: Student-facing page title.
+        purpose: Teaching purpose/approach for this page.
+        sub_bullets: List of sub-bullet dicts or strings.
+        total_pages: Total number of pages in the lesson.
+        previous_titles: Titles of pages that came before this one.
+        previous_speech: The speech text generated for the immediately
+            preceding page. Used to avoid repeating the same content.
+
+    Returns:
+        The generated speech text.
+    """
+    bullet_text = "\n".join(
+        f"- {sb.get('point', sb) if isinstance(sb, dict) else sb}"
+        for sb in sub_bullets
+    )
+    prev_pages = (
+        ", ".join(f'"{t}"' for t in previous_titles)
+        if previous_titles
+        else "(this is the first page)"
+    )
+
+    prev_speech_section = ""
+    if previous_speech:
+        prev_speech_section = (
+            f"\n--- What was said on the previous page (do NOT repeat this) ---\n"
+            f"{previous_speech}\n"
+            f"--- End of previous page narration ---\n"
+        )
+
+    user_content = (
+        f'Page {page_idx + 1} of {total_pages}: "{page_title}"\n'
+        f"Teaching approach: {purpose}\n"
+        f"Key points to cover:\n{bullet_text}\n"
+        f"Previous pages covered: {prev_pages}\n"
+        f"{prev_speech_section}\n"
+        f"Generate what you would say aloud to teach this page. "
+        f"Do not repeat what was already said on the previous page."
+    )
+    return await generate_speech_script(engine, course_code, user_content)

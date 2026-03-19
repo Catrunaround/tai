@@ -156,69 +156,70 @@ VOICE_TUTOR_OPENAI_FORMAT = {
 }
 
 # ========================
-# Outline JSON Schema (for tutor outline mode)
+# Outline JSON Schema (for tutor outline mode — flat content pages, page 1 onward)
 # ========================
 
-OUTLINE_BULLET_SCHEMA = {
+OUTLINE_PAGE_SCHEMA = {
     "type": "object",
     "properties": {
-        "point": {
+        "page_id": {
             "type": "string",
-            "description": "The teaching goal for this page — what the student should learn."
+            "description": "Unique identifier for this page: '1', '2', '3', etc."
+        },
+        "title": {
+            "type": "string",
+            "description": "Specific, instructionally clear title for this page."
         },
         "purpose": {
             "type": "string",
-            "description": (
-                "A model-facing instruction for the downstream content generator. "
-                "Describes HOW to explain this page's knowledge to the student: "
-                "what pedagogical approach to use, what examples or analogies to include, "
-                "what depth of detail to aim for, and how to structure the explanation. "
-                "Not shown to students."
-            )
+            "description": "Internal pedagogical instruction: HOW to teach this page — approach, framing, depth, examples to use."
         },
-        "references": {
+        "effort": {
+            "type": "string",
+            "description": "Brief explanation of how much depth and detail this page requires and why."
+        },
+        "reference_ids": {
             "type": "array",
             "items": {"type": "integer"},
-            "minItems": 1,
-            "description": "Reference numbers that provide evidence for this teaching point. At least one required."
+            "description": "Reference numbers relevant to this page's topic. Empty array if none."
         },
     },
-    "required": ["point", "purpose", "references"],
+    "required": ["page_id", "title", "purpose", "effort", "reference_ids"],
+    "additionalProperties": False
+}
+
+OUTLINE_OBJECT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "topic": {
+            "type": "string",
+            "description": "The main topic name for this teaching outline."
+        },
+        "pages": {
+            "type": "array",
+            "items": OUTLINE_PAGE_SCHEMA,
+            "description": "Content pages (page 1 onward) in teaching order. Page 0 is the overview page auto-assembled from these titles and is not included here."
+        },
+    },
+    "required": ["topic", "pages"],
     "additionalProperties": False
 }
 
 OUTLINE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "needs_multiple_pages": {
-            "type": "boolean",
-            "description": (
-                "true if the student's question requires multiple pages to explain "
-                "thoroughly (multi-step concepts, prerequisites, etc.). "
-                "false if a single page is sufficient (simple factual question, definition, etc.). "
-                "When false, still produce exactly one bullet."
-            )
-        },
-        "title": {
+        "thinking": {
             "type": "string",
-            "description": "A clear, descriptive title for this teaching outline."
+            "description": "Brief reasoning about how to structure the outline."
         },
-        "outline": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "High-level page titles only — one string per page. "
-                "This is the clean outline the student sees before detailed content is generated. "
-                "Each entry must match the corresponding bullet's 'point' field exactly."
-            )
+        "inferred_depth": {
+            "type": "string",
+            "enum": ["minimal", "standard"],
+            "description": "Inferred depth based on the student's question wording."
         },
-        "bullets": {
-            "type": "array",
-            "items": OUTLINE_BULLET_SCHEMA,
-            "description": "Ordered list of page teaching goals with supporting evidence."
-        },
+        "outline": OUTLINE_OBJECT_SCHEMA,
     },
-    "required": ["needs_multiple_pages", "title", "outline", "bullets"],
+    "required": ["thinking", "inferred_depth", "outline"],
     "additionalProperties": False
 }
 
@@ -316,10 +317,11 @@ PAGE_CONTENT_JSON_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
             "description": (
-                "Knowledge sub-points for this page. If the page's teaching goal is "
-                "straightforward, this can be a single entry matching the page title. "
-                "If the topic needs decomposition, list 2–5 specific sub-points. "
-                "These are shown to the student as a mini table-of-contents before the narration."
+                "Knowledge sub-points for this page, formatted as concise ## (level 2) markdown headers. "
+                "If the page's teaching goal is straightforward, this can be a "
+                "single entry matching the page title. If the topic needs decomposition, list "
+                "specific sub-points. These are shown to the student as a mini table-of-contents "
+                "before the narration."
             )
         },
         "blocks": {

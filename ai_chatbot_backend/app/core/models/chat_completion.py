@@ -44,6 +44,7 @@ class PageContentParams(BaseModel):
     """Parameters for the /page-content endpoint."""
     point: str                        # Student-facing page title
     purpose: str                      # Model-facing instruction for HOW to explain
+    effort: str = ""                  # Effort signal from outline for content depth calibration
     references: List[PageReference]   # file_uuid + chunk_index from ResponseReference
     course_code: str
     stream: bool = True
@@ -153,8 +154,7 @@ class GeneralCompletionParams(BaseModel):
     rag: Optional[bool] = True
     audio_response: Optional[bool] = False
     sid: Optional[str] = None  # chat_history_sid from frontend
-    tutor_mode: Optional[bool] = True  # Enable tutor mode (Bloom taxonomy, hints-first)
-    json_output: Optional[bool] = True  # Enable JSON output format (derived from tutor_mode if not set)
+    tutor_mode: Optional[bool] = False  # Enable tutor mode (Bloom taxonomy, hints-first)
 
 class FileCompletionParams(BaseModel):
     """
@@ -170,7 +170,6 @@ class FileCompletionParams(BaseModel):
     sid: Optional[str] = None  # chat_history_sid from frontend
     user_focus: UserFocus
     tutor_mode: Optional[bool] = False  # Enable tutor mode (Bloom taxonomy, hints-first)
-    json_output: Optional[bool] = True  # Enable JSON output format (derived from tutor_mode if not set)
 
 class PracticeCompletionParams(BaseModel):
     """
@@ -188,7 +187,6 @@ class PracticeCompletionParams(BaseModel):
     problem_id: str
     file_path: str
     tutor_mode: Optional[bool] = False  # Enable tutor mode (Bloom taxonomy, hints-first)
-    json_output: Optional[bool] = True  # Enable JSON output format (derived from tutor_mode if not set)
 
 class VoiceTranscriptParams(BaseModel):
     audio: VoiceMessage

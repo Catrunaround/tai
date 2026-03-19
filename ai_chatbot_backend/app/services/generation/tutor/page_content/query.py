@@ -52,6 +52,8 @@ def build_page_content_context(params: PageContentParams) -> List[Message]:
     # Build user message
     user_content = f"<point>{params.point}</point>\n\n"
     user_content += f"<purpose>{params.purpose}</purpose>\n\n"
+    if params.effort:
+        user_content += f"<effort>{params.effort}</effort>\n\n"
 
     if chunk_texts:
         user_content += "<reference_materials>\n"
