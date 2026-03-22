@@ -60,6 +60,7 @@ Content:
   - title: specific and instructionally clear
   - goal: what this page's explanation needs to achieve — the learning outcome the student should walk away with
   - requirements: what the downstream explanation must cover and how to tell it is done well — include specific acceptance criteria (e.g., "student can distinguish X from Y", "explanation includes a worked example")
+  - context: free-text guidance for the downstream content generator — naturally weave together: (1) what prerequisite knowledge from earlier pages this page can assume the student already understands, (2) what this page should NOT cover because it belongs to later pages or is out of scope, and (3) how this page connects back to the student's original question. Keep to 2–3 concise sentences.
 
 Reference assignment:
 - For each page, include "reference_ids": an array of integer reference numbers \
@@ -69,7 +70,7 @@ references just to use them — relevance matters, not quantity.
 - Leave reference_ids: [] when no reference fits.
 
 Schema constraints (follow exactly):
-- Every page must include ALL of these fields: page_id, title, goal, requirements, reference_ids.
+- Every page must include ALL of these fields: page_id, title, goal, requirements, context, reference_ids.
 - page_id is a simple sequential integer string starting from "1": "1", "2", "3", etc. There is no page_id "0".
 - Pages with no references use reference_ids: [].
 </outline_rules>
@@ -137,6 +138,7 @@ Content:
   - title: specific and instructionally clear
   - goal: what this page's explanation needs to achieve — the learning outcome the student should walk away with
   - requirements: what the downstream explanation must cover and how to tell it is done well — include specific acceptance criteria (e.g., "student can distinguish X from Y", "explanation includes a worked example")
+  - context: free-text guidance for the downstream content generator — naturally weave together: (1) what prerequisite knowledge from earlier pages this page can assume the student already understands, (2) what this page should NOT cover because it belongs to later pages or is out of scope, and (3) how this page connects back to the student's original question. Keep to 2–3 concise sentences.
 
 Teaching order:
 - Put prerequisites before applications
@@ -148,7 +150,7 @@ Reference assignment:
 - Since no reference materials are available, every page should use reference_ids: [].
 
 Schema constraints (follow exactly):
-- Every page must include ALL of these fields: page_id, title, goal, requirements, reference_ids.
+- Every page must include ALL of these fields: page_id, title, goal, requirements, context, reference_ids.
 - page_id is a simple sequential integer string starting from "1": "1", "2", "3", etc. There is no page_id "0".
 - Pages with no references use reference_ids: [].
 </outline_rules>

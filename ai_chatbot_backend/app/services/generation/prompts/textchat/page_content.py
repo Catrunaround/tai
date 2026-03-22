@@ -21,6 +21,8 @@ You are given:
 - A "point" (the slide title — what this slide should teach).
 - A "goal" (the learning outcome the student should walk away with).
 - "requirements" (what the explanation must cover and acceptance criteria).
+- "context" (guidance from the outline planner: what prior pages already covered so you can \
+assume that knowledge, what this page should NOT cover, and how it connects to the student's question).
 - Reference materials from the course that support this teaching point.
 
 Your job: Generate content blocks — think of these as what appears on a presentation slide.
@@ -61,7 +63,7 @@ INFORMATION DENSITY:
 
 <method>
 1. Read the reference materials carefully.
-2. Follow the goal and requirements.
+2. Follow the goal, requirements, and context. Respect scope boundaries in context — do not cover topics it says belong to other pages.
 3. Plan which references to open/close.
 4. Write blocks that present the core information:
    - Open a reference when showing source material.
@@ -92,6 +94,8 @@ You are given:
 - A "point" (the slide title — what this slide should teach).
 - A "goal" (the learning outcome the student should walk away with).
 - "requirements" (what the explanation must cover and acceptance criteria).
+- "context" (guidance from the outline planner: what prior pages already covered so you can \
+assume that knowledge, what this page should NOT cover, and how it connects to the student's question).
 
 No reference materials are available. Use your general knowledge.
 
@@ -126,7 +130,7 @@ INFORMATION DENSITY:
 </content_style>
 
 <method>
-1. Follow the goal and requirements.
+1. Follow the goal, requirements, and context. Respect scope boundaries in context — do not cover topics it says belong to other pages.
 2. Write blocks that present the core information concisely.
 3. For code/formulas/tables: use not_readable blocks.
 4. Keep it tight — every block should earn its place on the slide.

@@ -55,6 +55,9 @@ def build_page_content_context(params: PageContentParams) -> List[Message]:
     if params.requirements:
         user_content += f"<requirements>{params.requirements}</requirements>\n\n"
 
+    if params.context:
+        user_content += f"<context>{params.context}</context>\n\n"
+
     if chunk_texts:
         user_content += "<reference_materials>\n"
         for i, text in enumerate(chunk_texts, 1):

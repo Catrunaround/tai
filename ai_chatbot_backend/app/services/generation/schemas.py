@@ -178,13 +178,17 @@ OUTLINE_PAGE_SCHEMA = {
             "type": "string",
             "description": "What the explanation must cover and acceptance criteria for when it is done well."
         },
+        "context": {
+            "type": "string",
+            "description": "Free-text guidance for the content generator: prerequisite knowledge from prior pages, scope boundaries (what NOT to cover), and connection to the student's question."
+        },
         "reference_ids": {
             "type": "array",
             "items": {"type": "integer"},
             "description": "Reference numbers relevant to this page's topic. Empty array if none."
         },
     },
-    "required": ["page_id", "title", "goal", "requirements", "reference_ids"],
+    "required": ["page_id", "title", "goal", "requirements", "context", "reference_ids"],
     "additionalProperties": False
 }
 

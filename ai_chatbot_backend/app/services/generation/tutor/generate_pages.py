@@ -187,6 +187,7 @@ async def run_generate_pages_pipeline(
                 point=node["title"],
                 goal=node["goal"],
                 requirements=node.get("requirements", ""),
+                context=node.get("context", ""),
                 references=page_refs,
                 course_code=params.course_code,
             )
@@ -368,6 +369,7 @@ async def run_generate_pages_pipeline(
                 "page_idx": page_idx,
                 "title": node["title"],
                 "goal": node.get("goal", ""),
+                "context": node.get("context", ""),
                 "page_content": page_content_text,
                 "citations": speech_meta,
             }
@@ -389,6 +391,7 @@ async def run_generate_pages_pipeline(
                         page_idx=buf["page_idx"] - 1,
                         page_title=buf["title"],
                         goal=buf["goal"],
+                        context=buf["context"],
                         page_content=buf["page_content"],
                         total_pages=total_pages,
                         previous_titles=prev_titles,
@@ -414,6 +417,7 @@ async def run_generate_pages_pipeline(
                     page_idx=page_idx - 1,
                     page_title=node["title"],
                     goal=node.get("goal", ""),
+                    context=node.get("context", ""),
                     page_content=page_content_text,
                     total_pages=total_pages,
                     previous_titles=prev_titles,
@@ -455,6 +459,7 @@ async def run_generate_pages_pipeline(
                 page_idx=buf["page_idx"] - 1,
                 page_title=buf["title"],
                 goal=buf["goal"],
+                context=buf["context"],
                 page_content=buf["page_content"],
                 total_pages=total_pages,
                 previous_titles=prev_titles,
@@ -882,6 +887,7 @@ async def generate_page_speech(
     total_pages: int,
     previous_titles: List[str],
     previous_speech: str = "",
+    context: str = "",
     page_citations: Optional[list[SpeechCitation]] = None,
 ) -> tuple[str, list[SpeechCitation]]:
     """
@@ -928,9 +934,12 @@ async def generate_page_speech(
                 + "\n--- End of citations ---\n"
             )
 
+    context_section = f"Context: {context}\n" if context else ""
+
     user_content = (
         f'Page {page_idx + 1} of {total_pages}: "{page_title}"\n'
-        f"Teaching goal: {goal}\n\n"
+        f"Teaching goal: {goal}\n"
+        f"{context_section}\n"
         f"--- Page content (what the student sees on the slide) ---\n"
         f"{page_content}\n"
         f"--- End of page content ---\n\n"
@@ -955,6 +964,7 @@ async def stream_page_speech(
     total_pages: int,
     previous_titles: List[str],
     previous_speech: str = "",
+    context: str = "",
     page_citations: Optional[list[SpeechCitation]] = None,
 ) -> AsyncIterator[str]:
     """
@@ -1000,9 +1010,12 @@ async def stream_page_speech(
                 + "\n".join(lines)
                 + "\n--- End of citations ---\n"
             )
+    context_section = f"Context: {context}\n" if context else ""
+
     user_content = (
         f'Page {page_idx + 1} of {total_pages}: "{page_title}"\n'
-        f"Teaching goal: {goal}\n\n"
+        f"Teaching goal: {goal}\n"
+        f"{context_section}\n"
         f"--- Page content (what the student sees on the slide) ---\n"
         f"{page_content}\n"
         f"--- End of page content ---\n\n"

@@ -45,6 +45,7 @@ class PageContentParams(BaseModel):
     point: str                        # Student-facing page title
     goal: str                         # What this page's explanation needs to achieve
     requirements: str = ""             # Acceptance criteria from outline for what the explanation must cover
+    context: str = ""                  # Free-text context from outline: prerequisites, scope boundaries, question connection
     references: List[PageReference]   # file_uuid + chunk_index from ResponseReference
     course_code: str
     stream: bool = True
