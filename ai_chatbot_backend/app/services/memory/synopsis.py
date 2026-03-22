@@ -115,7 +115,7 @@ async def _llm_synopsis_from_transcript(
         top_p=1.0,
         max_tokens=800,
         response_format={"type": "json_object"},
-        extra_body={"guided_json": MEMORY_SYNOPSIS_JSON_SCHEMA}
+        extra_body={"json": MEMORY_SYNOPSIS_JSON_SCHEMA}
     )
 
     # vLLM with --reasoning-parser separates reasoning_content from content
@@ -181,7 +181,7 @@ async def _llm_merge_synopses(
         top_p=1.0,
         max_tokens=800,
         response_format={"type": "json_object"},
-        extra_body={"guided_json": MEMORY_SYNOPSIS_JSON_SCHEMA}
+        extra_body={"json": MEMORY_SYNOPSIS_JSON_SCHEMA}
     )
 
     # vLLM with --reasoning-parser separates reasoning_content from content

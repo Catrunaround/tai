@@ -170,13 +170,13 @@ OUTLINE_PAGE_SCHEMA = {
             "type": "string",
             "description": "Specific, instructionally clear title for this page."
         },
-        "purpose": {
+        "goal": {
             "type": "string",
-            "description": "Internal pedagogical instruction: HOW to teach this page — approach, framing, depth, examples to use."
+            "description": "What this page's explanation needs to achieve — the learning outcome the student should walk away with."
         },
-        "effort": {
+        "requirements": {
             "type": "string",
-            "description": "Brief explanation of how much depth and detail this page requires and why."
+            "description": "What the explanation must cover and acceptance criteria for when it is done well."
         },
         "reference_ids": {
             "type": "array",
@@ -184,7 +184,7 @@ OUTLINE_PAGE_SCHEMA = {
             "description": "Reference numbers relevant to this page's topic. Empty array if none."
         },
     },
-    "required": ["page_id", "title", "purpose", "effort", "reference_ids"],
+    "required": ["page_id", "title", "goal", "requirements", "reference_ids"],
     "additionalProperties": False
 }
 
@@ -208,18 +208,9 @@ OUTLINE_OBJECT_SCHEMA = {
 OUTLINE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "thinking": {
-            "type": "string",
-            "description": "Brief reasoning about how to structure the outline."
-        },
-        "inferred_depth": {
-            "type": "string",
-            "enum": ["minimal", "standard"],
-            "description": "Inferred depth based on the student's question wording."
-        },
         "outline": OUTLINE_OBJECT_SCHEMA,
     },
-    "required": ["thinking", "inferred_depth", "outline"],
+    "required": ["outline"],
     "additionalProperties": False
 }
 
@@ -280,9 +271,8 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
             "type": "string",
             "enum": ["readable", "not_readable"],
             "description": (
-                '"readable" for narration text that will be spoken aloud by TTS. '
-                '"not_readable" for visual-only content (code, formulas, tables) '
-                'shown on screen but not spoken.'
+                '"readable" for concise slide text (definitions, key points). '
+                '"not_readable" for visual-only content (code, formulas, tables).'
             )
         },
         "citations": {
@@ -297,8 +287,8 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
         "markdown_content": {
             "type": "string",
             "description": (
-                "For readable blocks: natural language narration written to be spoken aloud. "
-                "For not_readable blocks: code, formulas, or tables displayed visually only."
+                "For readable blocks: concise slide text — key definitions, short statements. "
+                "For not_readable blocks: code, formulas, or tables."
             )
         },
         "close": {
@@ -313,28 +303,16 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
 PAGE_CONTENT_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "sub_bullets": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Knowledge sub-points for this page, formatted as concise ## (level 2) markdown headers. "
-                "If the page's teaching goal is straightforward, this can be a "
-                "single entry matching the page title. If the topic needs decomposition, list "
-                "specific sub-points. These are shown to the student as a mini table-of-contents "
-                "before the narration."
-            )
-        },
         "blocks": {
             "type": "array",
             "items": PAGE_CONTENT_TTS_BLOCK_SCHEMA,
             "description": (
-                "Ordered narration blocks. Each block declares its type (readable or not_readable), "
-                "can open/close a reference file, and contains markdown content. Readable blocks "
-                "are spoken aloud by TTS; not_readable blocks are displayed visually only."
+                "Ordered slide content blocks. Readable blocks contain concise text (definitions, "
+                "key points); not_readable blocks contain code, formulas, or tables."
             )
         },
     },
-    "required": ["sub_bullets", "blocks"],
+    "required": ["blocks"],
     "additionalProperties": False
 }
 

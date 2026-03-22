@@ -13,11 +13,7 @@ import sys
 
 from app.dependencies.model import get_engine_for_mode
 from app.core.models.chat_completion import GeneratePagesParams, Message
-from app.services.generation.tutor.generate_pages import (
-    run_generate_pages_pipeline,
-    generate_intro_speech,
-    generate_page_speech,
-)
+from app.services.generation.tutor.generate_pages import run_generate_pages_pipeline
 
 # Toggle to use local vLLM for speech generation instead of OpenAI
 USE_LOCAL_SPEECH = False
@@ -32,6 +28,7 @@ async def main(course_code: str, question: str):
     # Get engines
     openai_engine = get_engine_for_mode("openai")
     local_engine = get_engine_for_mode("local")
+    speech_engine = local_engine if USE_LOCAL_SPEECH else openai_engine
 
     params = GeneratePagesParams(
         course_code=course_code,
@@ -39,45 +36,10 @@ async def main(course_code: str, question: str):
         stream=True,
     )
 
-    # State tracking
-    outline_data = None       # Set when outline.complete arrives (may have empty bullets)
-    outline_titles = []       # Page titles from outline["outline"] array
-    page_purposes = {}        # {page_idx: purpose} from page.start events
-    total_pages = 0
-    current_page_idx = -1
-    current_page_title = ""
-
-    # Sequential speech tracking — each page waits for the previous page's speech
-    last_speech_text = ""     # Speech generated for the previous page
-    # Buffer page speech data until outline arrives (so Intro speech goes first)
-    buffered_page_speeches = []  # [(page_idx, page_title, sub_bullets), ...]
-
-    async def _generate_page_speech_sequential(page_idx, page_title, sub_bullets, use_local=False):
-        """Generate speech for a content page sequentially, using previous speech context."""
-        nonlocal last_speech_text
-        engine = local_engine if use_local else openai_engine
-        purpose = page_purposes.get(page_idx, "")
-        prev_titles = outline_titles[:page_idx - 1] if page_idx > 1 else []
-
-        speech_text = await generate_page_speech(
-            engine=engine,
-            course_code=course_code,
-            page_idx=page_idx - 1,  # generate_page_speech uses 0-based index
-            page_title=page_title,
-            purpose=purpose,
-            sub_bullets=sub_bullets,
-            total_pages=total_pages,
-            previous_titles=prev_titles,
-            previous_speech=last_speech_text,
-        )
-        print(f"\n--- SPEECH (Page {page_idx}) ---")
-        print(speech_text)
-        print("---")
-        last_speech_text = speech_text
-        return speech_text
-
-    # Run pipeline and print each SSE event
-    async for event_str in run_generate_pages_pipeline(params, openai_engine, local_engine):
+    # Run pipeline — speech generation is now fully handled inside the pipeline
+    async for event_str in run_generate_pages_pipeline(
+        params, openai_engine, local_engine, speech_engine=speech_engine,
+    ):
         # Parse the SSE data line
         if not event_str.startswith("data: "):
             continue
@@ -92,95 +54,69 @@ async def main(course_code: str, question: str):
         if evt_type == "response.reference":
             print(f"\n--- REFERENCES ({len(evt['references'])} found) ---")
             for ref in evt["references"]:
-                print(f"  [{ref['reference_idx']}] {ref.get('file_path', 'N/A')}")
+                print(f"  [{ref['reference_idx']}] {ref.get('file_path', 'N/A')} (uuid: {ref.get('file_uuid', 'N/A')})")
 
         elif evt_type == "outline.complete":
-            outline = evt["outline"]
-            outline_data = outline
-            outline_obj = outline.get("outline", {})
-            inferred_depth = outline.get("inferred_depth", "standard")
-            # Extract page titles in order (pages array = content pages 1+)
+            outline_obj = evt["outline"].get("outline", {})
             all_pages = outline_obj.get("pages", [])
-            outline_titles = [n["title"] for n in all_pages]
-            total_pages = len(outline_titles)
-            is_single_page = inferred_depth == "minimal"
+            topic = outline_obj.get("topic", "Untitled")
+            print(f"\n--- OUTLINE (Page 0): {topic} ---")
+            for i, p in enumerate(all_pages):
+                ref_ids = p.get("reference_ids", [])
+                print(f"  Page {i+1}: {p['title']}  [reference_ids: {ref_ids}]")
 
-            if is_single_page:
-                # Single-page: no outline display, no intro speech
-                # Just replay any buffered page speeches directly (sequentially)
-                for (buf_idx, buf_title, buf_bullets) in buffered_page_speeches:
-                    await _generate_page_speech_sequential(buf_idx, buf_title, buf_bullets, use_local=USE_LOCAL_SPEECH)
-                buffered_page_speeches = []
-            else:
-                # Multi-page: show outline + generate intro speech from user question
-                topic = outline_obj.get("topic", "Untitled")
-                print(f"\n--- OUTLINE (Page 0): {topic} [depth={inferred_depth}] ---")
-                for i, title in enumerate(outline_titles):
-                    print(f"  Page {i+1}: {title}")
-
-                intro_engine = local_engine if USE_LOCAL_SPEECH else openai_engine
-                intro_text = await generate_intro_speech(
-                    engine=intro_engine,
-                    course_code=course_code,
-                    student_question=question,
-                    topic=topic,
-                    total_pages=total_pages,
-                    page_titles=outline_titles,
-                )
-                print(f"\n--- SPEECH (Intro) ---")
-                print(intro_text)
-                print("---")
-                # Intro speech becomes the "previous speech" for page 1
-                last_speech_text = intro_text
-
-                # Now generate buffered page speeches sequentially
-                for (buf_idx, buf_title, buf_bullets) in buffered_page_speeches:
-                    await _generate_page_speech_sequential(buf_idx, buf_title, buf_bullets, use_local=USE_LOCAL_SPEECH)
-                buffered_page_speeches = []
-
-        elif evt_type == "page.start":
-            current_page_idx = evt["page_index"]
-            current_page_title = evt["point"]
-            page_purposes[current_page_idx] = evt.get("purpose", "")
+        elif evt_type == "page.open":
             print(f"\n{'='*60}")
-            print(f"PAGE {current_page_idx}: {current_page_title}")
+            print(f"PAGE {evt['page_index']}: {evt['point']}")
             print(f"{'='*60}")
 
-        elif evt_type == "page.bullets":
-            sub_bullets = evt.get("sub_bullets", [])
-            print(f"\n  Bullet points:")
-            for j, sb in enumerate(sub_bullets):
-                if isinstance(sb, dict):
-                    print(f"    {j+1}. {sb.get('point', sb)}")
-                else:
-                    print(f"    {j+1}. {sb}")
-            print()
+        elif evt_type == "page.close":
+            print(f"\n--- Page {evt['page_index']} content complete ---")
 
-            # Generate speech — buffer if outline not yet available
-            if outline_data is None:
-                buffered_page_speeches.append(
-                    (current_page_idx, current_page_title, sub_bullets)
-                )
-            else:
-                await _generate_page_speech_sequential(current_page_idx, current_page_title, sub_bullets, use_local=USE_LOCAL_SPEECH)
-
-        elif evt_type == "page.block_type":
+        elif evt_type == "block.open":
             if evt.get("block_type") == "not_readable":
                 print("\n  [Code/Formula block]")
 
-        elif evt_type == "response.citation.open":
-            cid = evt.get("citation_id", "?")
-            quote = evt.get("quote_text")
-            if quote:
-                print(f"\n  [ref:{cid}] \"{quote}\"")
-            else:
-                print(f"\n  [ref:{cid}]")
+        elif evt_type == "block.close":
+            pass  # visual separator already handled by block.open
 
-        elif evt_type == "response.citation.close":
-            pass
+        elif evt_type == "page.speech":
+            # Legacy buffered speech event (intro still uses this)
+            label = "Intro" if evt["page_index"] == 0 else f"Page {evt['page_index']}"
+            print(f"\n--- SPEECH ({label}) ---")
+            print(evt["speech_text"])
+            print("---")
+
+        elif evt_type == "page.speech.delta":
+            label = "Intro" if evt["page_index"] == 0 else f"Page {evt['page_index']}"
+            if evt.get("seq", 0) == 0:
+                print(f"\n--- SPEECH STREAM ({label}) ---")
+            print(evt["text"], end="", flush=True)
+
+        elif evt_type == "page.speech.done":
+            label = "Intro" if evt["page_index"] == 0 else f"Page {evt['page_index']}"
+            citations = evt.get("citations", [])
+            has_offsets = any(c.get("char_offset", 0) > 0 for c in citations)
+            if citations and has_offsets:
+                print(f"\n  ✅ {len(citations)} citations with char_offset")
+                for c in citations:
+                    if c["action"] == "open":
+                        ref = c.get("reference_idx", "?")
+                        fp = c.get("file_path", "")
+                        chunk = c.get("chunk_index")
+                        chunk_str = f" chunk:{chunk}" if chunk is not None else ""
+                        off = c.get("char_offset", 0)
+                        print(f"    @{off} [open ref:{ref} {fp}{chunk_str}]")
+                    else:
+                        off = c.get("char_offset", 0)
+                        print(f"    @{off} [close ref:{c.get('reference_idx', '?')}]")
+            elif citations:
+                print(f"\n  ⚠️  {len(citations)} citations (fallback, no char_offset)")
+            print(f"--- END SPEECH ({label}) ---")
 
         elif evt_type == "page.delta":
-            print(evt["text"], end="", flush=True)
+            if evt.get("text"):
+                print(evt["text"], end="", flush=True)
 
         elif evt_type == "page.error":
             print(f"\n[ERROR] Page {evt['page_index']}: {evt['error']}")

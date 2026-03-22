@@ -3,7 +3,7 @@ from typing import Any, List, Optional
 from app.config import settings
 from app.core.models.chat_completion import Message
 from app.services.generation.model_call import SAMPLING_PARAMS, call_remote_engine
-from app.services.generation.schemas import PAGE_CONTENT_OPENAI_FORMAT
+from app.services.generation.schemas import PAGE_CONTENT_OPENAI_FORMAT, PAGE_CONTENT_JSON_SCHEMA
 
 
 async def call_page_content_model(messages: List[Message], engine: Any):
@@ -39,7 +39,7 @@ async def call_page_content_openai(
     Call OpenAI for page content generation with block-based JSON schema.
 
     Returns a streaming iterator of chunks (same interface as call_remote_engine).
-    Uses PAGE_CONTENT_OPENAI_FORMAT for structured output with sub_bullets + blocks.
+    Uses PAGE_CONTENT_OPENAI_FORMAT for structured output with blocks.
     """
     return await call_remote_engine(
         messages,
@@ -48,3 +48,33 @@ async def call_page_content_openai(
         course=course,
         response_format=PAGE_CONTENT_OPENAI_FORMAT,
     )
+
+
+async def call_page_content_local(
+    messages: List[Message],
+    engine: Any,
+):
+    """
+    Call local vLLM for page content generation.
+
+    The model generates slide-style markdown content based on prompt instructions.
+    No structured output constraint — the prompt guides the format.
+    Returns a streaming iterator of chunks.
+    """
+    chat = [{"role": m.role, "content": m.content} for m in messages]
+
+    stream = await engine.chat.completions.create(
+        model=settings.vllm_chat_model,
+        messages=chat,
+        stream=True,
+        temperature=SAMPLING_PARAMS["temperature"],
+        top_p=SAMPLING_PARAMS["top_p"],
+        max_tokens=SAMPLING_PARAMS["max_tokens"],
+        extra_body={
+            "top_k": SAMPLING_PARAMS["extra_body"]["top_k"],
+            "min_p": SAMPLING_PARAMS["extra_body"]["min_p"],
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+    )
+
+    return stream

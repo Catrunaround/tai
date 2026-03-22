@@ -24,7 +24,7 @@ def build_page_bullets_context(params: PageContentParams) -> List[Message]:
 
     1. For each reference, fetch chunk text from SQLite via get_chunks_by_file_uuid().
     2. Select system prompt (WITH_REFS or NO_REFS).
-    3. Build user message with point, purpose, and chunk texts.
+    3. Build user message with point, goal, and chunk texts.
     """
     class_name = _resolve_class_name(params.course_code)
 
@@ -51,7 +51,7 @@ def build_page_bullets_context(params: PageContentParams) -> List[Message]:
 
     # Build user message
     user_content = f"<point>{params.point}</point>\n\n"
-    user_content += f"<purpose>{params.purpose}</purpose>\n\n"
+    user_content += f"<goal>{params.goal}</goal>\n\n"
 
     if chunk_texts:
         user_content += "<reference_materials>\n"

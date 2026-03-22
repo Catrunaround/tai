@@ -43,8 +43,8 @@ class PageReference(BaseModel):
 class PageContentParams(BaseModel):
     """Parameters for the /page-content endpoint."""
     point: str                        # Student-facing page title
-    purpose: str                      # Model-facing instruction for HOW to explain
-    effort: str = ""                  # Effort signal from outline for content depth calibration
+    goal: str                         # What this page's explanation needs to achieve
+    requirements: str = ""             # Acceptance criteria from outline for what the explanation must cover
     references: List[PageReference]   # file_uuid + chunk_index from ResponseReference
     course_code: str
     stream: bool = True
@@ -59,11 +59,16 @@ class CitationOpen(BaseEvt):
     type: Literal["response.citation.open"] = "response.citation.open"
     citation_id: int = Field(ge=0)
     quote_text: Optional[str] = None
+    page_index: Optional[int] = None          # present in page mode
+    reference_idx: Optional[int] = None       # global reference index
+    file_path: Optional[str] = None           # file path for the reference
 
 class CitationClose(BaseEvt):
     model_config = ConfigDict(extra="forbid")
     type: Literal["response.citation.close"] = "response.citation.close"
     citation_id: int = Field(ge=0)
+    page_index: Optional[int] = None          # present in page mode
+    reference_idx: Optional[int] = None       # global reference index
 
 class AudioTranscript(BaseEvt):
     model_config = ConfigDict(extra="forbid")
@@ -76,30 +81,33 @@ class Done(BaseEvt):
 
 
 # === Generate-pages pipeline events ===
-
 class OutlineComplete(BaseEvt):
     model_config = ConfigDict(extra="forbid")
     type: Literal["outline.complete"] = "outline.complete"
     outline: dict
 
-class PageStart(BaseEvt):
+class PageOpen(BaseEvt):
     model_config = ConfigDict(extra="forbid")
-    type: Literal["page.start"] = "page.start"
+    type: Literal["page.open"] = "page.open"
     page_index: int = Field(ge=0)
     point: str
-    purpose: str = ""
+    goal: str = ""
 
-class PageBullets(BaseEvt):
+class PageClose(BaseEvt):
     model_config = ConfigDict(extra="forbid")
-    type: Literal["page.bullets"] = "page.bullets"
+    type: Literal["page.close"] = "page.close"
     page_index: int = Field(ge=0)
-    sub_bullets: list  # [{"point": "...", "reference_ids": [1, 2]}]
 
-class PageBlockType(BaseEvt):
+class BlockOpen(BaseEvt):
     model_config = ConfigDict(extra="forbid")
-    type: Literal["page.block_type"] = "page.block_type"
+    type: Literal["block.open"] = "block.open"
     page_index: int = Field(ge=0)
-    block_type: str  # "readable" or "not_readable"
+    block_type: Literal["readable", "not_readable"]
+
+class BlockClose(BaseEvt):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["block.close"] = "block.close"
+    page_index: int = Field(ge=0)
 
 class PageDelta(BaseEvt):
     model_config = ConfigDict(extra="forbid")
@@ -114,6 +122,46 @@ class PageError(BaseEvt):
     page_index: int
     error: str
 
+class SpeechCitation(BaseModel):
+    """A single citation event for speech-synchronized reference navigation.
+
+    ``char_offset`` is the character position in ``PageSpeech.speech_text``
+    where this event should fire.  The frontend tracks TTS playback progress
+    and triggers the action (open/close a reference panel, scroll to the
+    relevant chunk) when playback reaches this offset.
+    """
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["open", "close"]
+    citation_id: int
+    char_offset: int = Field(ge=0)          # position in speech_text
+    quote_text: Optional[str] = None        # only for "open"
+    reference_idx: Optional[int] = None     # global reference index
+    file_path: Optional[str] = None         # file path for the reference
+    file_uuid: Optional[str] = None         # file UUID for frontend lookup
+    chunk_index: Optional[float] = None     # chunk position within the file
+
+class PageSpeech(BaseEvt):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["page.speech"] = "page.speech"
+    page_index: int = Field(ge=-1)   # -1 for intro (page 0), 1+ for content pages
+    speech_text: str
+    citations: list[SpeechCitation] = Field(default_factory=list)  # ordered citation events
+
+class PageSpeechDelta(BaseEvt):
+    """Incremental speech text chunk (sentence-level) for streaming TTS."""
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["page.speech.delta"] = "page.speech.delta"
+    page_index: int = Field(ge=-1)
+    seq: int = Field(ge=0)
+    text: str = Field(min_length=1)
+
+class PageSpeechDone(BaseEvt):
+    """Signals speech streaming is complete for a page. Carries final citations."""
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["page.speech.done"] = "page.speech.done"
+    page_index: int = Field(ge=-1)
+    full_text: str
+    citations: list[SpeechCitation] = Field(default_factory=list)
 
 def sse(payload: BaseEvt) -> str:
     return f"data: {payload.model_dump_json(exclude_unset=False)}\n\n"

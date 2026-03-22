@@ -26,7 +26,7 @@ async def call_page_bullets_model(
         temperature=SAMPLING_PARAMS["temperature"],
         top_p=SAMPLING_PARAMS["top_p"],
         max_tokens=1000,
-        extra_body={"guided_json": PAGE_BULLETS_JSON_SCHEMA},
+        extra_body={"json": PAGE_BULLETS_JSON_SCHEMA},
     )
 
     try:
