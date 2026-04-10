@@ -8,10 +8,16 @@ block-based content with citations and reference open/close.
 
 Pipelined: page 0 content generation starts as soon as the first page is parsed
 from the streaming outline, rather than waiting for the entire outline.
+
+Page content for each page is generated concurrently (parallel vLLM requests),
+then emitted in page order using a reorder buffer (asyncio.Event per page).
+Speech generation remains sequential (depends on previous page's speech).
 """
 import asyncio
 import json
+import os
 import re
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, List, Optional
 
 from app.core.models.chat_completion import (
@@ -48,12 +54,14 @@ async def run_generate_pages_pipeline(
     openai_engine: Any,
     local_engine: Any,
     speech_engine: Any = None,
+    use_openai_pages: bool = False,
+    render_mode: str = "json",
 ) -> AsyncIterator[str]:
     """
-    Combined pipeline: outline generation (OpenAI) -> per-page content (local vLLM)
+    Combined pipeline: outline generation (OpenAI) -> per-page content (local vLLM or OpenAI)
     -> sequential speech generation per page.
 
-    For each page, local vLLM generates block-based JSON with:
+    For each page, the content engine generates block-based JSON with:
       - blocks: slide content with citations
       - blocks: narration with integrated citation open/close
 
@@ -65,14 +73,20 @@ async def run_generate_pages_pipeline(
     Args:
         speech_engine: Engine used for speech script generation.
             Defaults to openai_engine if not provided.
+        use_openai_pages: If True, use OpenAI with structured JSON schema
+            for page content generation instead of local vLLM.
+        render_mode: "json" for block-based JSON output (default),
+            "html" for raw HTML artifact output.
     """
     from app.services.generation.tutor.query import build_tutor_context
     from app.services.generation.tutor.generate import call_tutor_model
-    from app.services.generation.tutor.page_content.query import build_page_content_context
-    from app.services.generation.tutor.page_content.generate import call_page_content_local
 
     if speech_engine is None:
         speech_engine = openai_engine
+
+    import time as _time
+    _stage_times: dict[str, float] = {}
+    _t0 = _time.monotonic()
 
     # Extract the student's original question (last user message)
     student_question = ""
@@ -93,22 +107,16 @@ async def run_generate_pages_pipeline(
         timer=None,
         audio_response=False,
     )
+    _stage_times["1_rag_context"] = _time.monotonic() - _t0
 
     # === Step 2: Emit all retrieved references upfront ===
     references = _build_references_from_list(context.reference_list)
     if references:
         yield sse(ResponseReference(references=references))
 
-    # === Step 2.5: Generate intro speech (only needs student question) ===
-    intro_text = await generate_intro_speech(
-        engine=speech_engine,
-        course_code=params.course_code,
-        student_question=student_question,
-    )
-    yield sse(PageSpeech(page_index=0, speech_text=intro_text))
-    last_speech_text = intro_text
-
     # === Step 3: Start outline stream ===
+    _t_parallel_stage = _time.monotonic()
+    _t_outline = _time.monotonic()
     raw_stream = await call_tutor_model(
         context.messages, openai_engine, stream=True,
         audio_response=False, course=params.course_code,
@@ -158,61 +166,118 @@ async def run_generate_pages_pipeline(
             print(f"[ERROR] Failed to parse outline JSON: {outline_text[:500]}")
             outline_holder["error"] = True
 
+        _stage_times["3_outline_stream"] = _time.monotonic() - _t_outline
         # Sentinel: no more nodes
         await node_queue.put(None)
 
     outline_task = asyncio.create_task(_collect_outline())
 
-    # === Step 5: Generate pages as leaf nodes arrive from the queue ===
-    page_idx = 1
+    # === Step 5: Launch parallel page content generation ===
+    # As outline nodes arrive, immediately kick off concurrent content tasks.
+    # Each task collects its chunks; the emit loop below replays them in order.
+    page_results: dict[int, PageResult] = {}
+    page_ready_events: dict[int, asyncio.Event] = {}
+    page_tasks: list[asyncio.Task] = []
+    page_nodes: list[dict] = []
+    page_timing: dict[str, float] = {}  # timing buffer
     outline_emitted = False
 
-    # --- Speech state: sequential generation with previous-page context ---
-    # last_speech_text is initialized to intro speech (generated in Step 2.5)
-    # Buffer pages whose content finished before outline was available
-    speech_buffer: List[dict] = []  # [{page_idx, title, goal, page_content, citations}, ...]
+    t_parallel_start = _time.monotonic()
 
+    page_idx = 0
     while True:
         node = await node_queue.get()
         if node is None:
             break
+        page_idx += 1
+        page_nodes.append(node)
+        page_ready_events[page_idx] = asyncio.Event()
+        task = asyncio.create_task(_generate_page_content_async(
+            page_idx, node, context, local_engine, openai_engine, params,
+            render_mode, use_openai_pages, page_results, page_ready_events,
+        ))
+        page_tasks.append(task)
 
-        try:
-            page_refs = _resolve_page_references(
-                node.get("reference_ids", []),
-                context.reference_list,
-            )
+    total_pages = len(page_nodes)
+    print(f"[INFO] Launched {total_pages} parallel page content tasks")
 
-            page_params = PageContentParams(
-                point=node["title"],
-                goal=node["goal"],
-                requirements=node.get("requirements", ""),
-                context=node.get("context", ""),
-                references=page_refs,
-                course_code=params.course_code,
-            )
+    # === Step 5.5: Generate intro speech now that the outline is fully known ===
+    # outline_task is guaranteed done (sentinel was last item in node_queue)
+    await outline_task
+    outline_data = outline_holder.get("data", {})
 
-            yield sse(PageOpen(page_index=page_idx, point=node["title"], goal=node["goal"]))
+    _t_intro = _time.monotonic()
+    intro_text = await generate_intro_speech(
+        engine=speech_engine,
+        course_code=params.course_code,
+        student_question=student_question,
+        outline_data=outline_data,
+    )
+    _stage_times["2_intro_speech"] = _time.monotonic() - _t_intro
+    yield sse(PageSpeech(page_index=0, speech_text=intro_text))
+    last_speech_text = intro_text
 
-            # --- Generate page content via local vLLM (block-based JSON, streaming) ---
-            page_messages = build_page_content_context(page_params)
-            page_stream = await call_page_content_local(
-                page_messages, local_engine
-            )
+    # === Step 6: Emit pages in order (reorder buffer) + sequential speech ===
 
-            page_text = ""
-            block_state = BlockStreamState()
-            seq = 0
-            has_content = False
-            block_is_open = False  # track whether a block.open has been emitted
-            # For local→global reference mapping
-            page_ref_ids = [int(r) for r in node.get("reference_ids", []) if _safe_int(r) is not None]
-            active_global_ref: Optional[int] = None  # currently open global reference_idx
-            # Collect citation events for PageSpeech (no longer emitted during page streaming)
+    for idx in range(1, total_pages + 1):
+        # Wait until this page's content generation is done
+        t_page_wait_start = _time.monotonic()
+        await page_ready_events[idx].wait()
+        t_page_wait = _time.monotonic() - t_page_wait_start
+        page_timing[f"page_{idx}_wait"] = t_page_wait
+        t_page_emit_start = _time.monotonic()
+        result = page_results[idx]
+        node = result.node
+
+        # Emit outline.complete as soon as available
+        if not outline_emitted and outline_holder.get("data"):
+            yield sse(OutlineComplete(outline=outline_holder["data"]))
+            outline_emitted = True
+
+        if result.error:
+            yield sse(PageError(page_index=idx, error=result.error))
+            continue
+
+        yield sse(PageOpen(page_index=idx, point=node["title"], goal=node["goal"]))
+
+        page_text = ""
+        seq = 0
+        has_content = False
+
+        # ─── HTML/interactive mode: replay raw HTML chunks ───
+        if render_mode in ("html", "interactive", "explore"):
+            for chunk in result.chunks:
+                if not outline_emitted and outline_holder.get("data"):
+                    yield sse(OutlineComplete(outline=outline_holder["data"]))
+                    outline_emitted = True
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                content = getattr(delta, "content", None)
+                if not content:
+                    content = getattr(delta, "reasoning_content", None)
+                if not content:
+                    continue
+                page_text += content
+                yield sse(PageDelta(page_index=idx, seq=seq, text=content))
+                seq += 1
+                has_content = True
+
+            if not has_content:
+                print(f"[WARNING] Page {idx} (html) produced no content")
+                yield sse(PageError(page_index=idx, error="Model produced no content for this page"))
+
+            page_content_text = page_text
             page_citations: list[SpeechCitation] = []
 
-            async for chunk in page_stream:
-                # Check if outline finished during page generation
+        # ─── JSON block mode: replay chunks with block/citation parsing ───
+        else:
+            block_state = BlockStreamState()
+            block_is_open = False
+            active_global_ref: Optional[int] = None
+            page_citations: list[SpeechCitation] = []
+
+            for chunk in result.chunks:
                 if not outline_emitted and outline_holder.get("data"):
                     yield sse(OutlineComplete(outline=outline_holder["data"]))
                     outline_emitted = True
@@ -221,7 +286,6 @@ async def run_generate_pages_pipeline(
                     continue
                 delta = chunk.choices[0].delta
                 content = getattr(delta, "content", None)
-                # Fallback: use reasoning_content if content is empty (thinking mode leak)
                 if not content:
                     content = getattr(delta, "reasoning_content", None)
                 if not content:
@@ -229,32 +293,35 @@ async def run_generate_pages_pipeline(
 
                 page_text += content
 
-                # Incrementally parse blocks for text deltas + block types.
-                # Citation events are emitted as SSE AND collected for PageSpeech.
                 events = extract_answers_with_citations(page_text, block_state)
                 for evt in events:
                     if evt.block_type is not None:
-                        # Close previous block before opening a new one
                         if block_is_open:
-                            yield sse(BlockClose(page_index=page_idx))
-                        yield sse(BlockOpen(page_index=page_idx, block_type=evt.block_type))
+                            yield sse(BlockClose(page_index=idx))
+                        yield sse(BlockOpen(
+                            page_index=idx,
+                            block_type=evt.block_type,
+                            layout=evt.layout or "default",
+                            visual_emphasis=evt.visual_emphasis or "primary",
+                            icon_hint=evt.icon_hint,
+                        ))
                         block_is_open = True
                     if evt.citation_open is not None:
                         ref_idx, ref_path = _resolve_reference(
-                            evt.citation_open.citation_id, page_ref_ids,
+                            evt.citation_open.citation_id, result.page_ref_ids,
                             context.reference_list,
                         )
                         yield sse(CitationOpen(
                             citation_id=evt.citation_open.citation_id,
                             quote_text=evt.citation_open.quote_text or None,
-                            page_index=page_idx,
+                            page_index=idx,
                             reference_idx=ref_idx,
                             file_path=ref_path,
                         ))
                         page_citations.append(SpeechCitation(
                             action="open",
                             citation_id=evt.citation_open.citation_id,
-                            char_offset=0,  # placeholder; real offset computed in _parse_speech_citations
+                            char_offset=0,
                             quote_text=evt.citation_open.quote_text or None,
                             reference_idx=ref_idx,
                             file_path=ref_path,
@@ -262,48 +329,54 @@ async def run_generate_pages_pipeline(
                         if ref_idx is not None:
                             active_global_ref = ref_idx
                     if evt.text_delta is not None:
-                        yield sse(PageDelta(page_index=page_idx, seq=seq, text=evt.text_delta))
+                        yield sse(PageDelta(page_index=idx, seq=seq, text=evt.text_delta))
                         seq += 1
                         has_content = True
                     if evt.citation_close is not None:
                         yield sse(CitationClose(
                             citation_id=evt.citation_close,
-                            page_index=page_idx,
+                            page_index=idx,
                             reference_idx=active_global_ref,
                         ))
                         page_citations.append(SpeechCitation(
                             action="close",
                             citation_id=evt.citation_close,
-                            char_offset=0,  # placeholder
+                            char_offset=0,
                             reference_idx=active_global_ref,
                         ))
                         active_global_ref = None
 
-            # Final parse after stream completes — flush remaining events
+            # Final parse — flush remaining events
             if page_text:
                 events = extract_answers_with_citations(page_text, block_state)
                 for evt in events:
                     if evt.block_type is not None:
                         if block_is_open:
-                            yield sse(BlockClose(page_index=page_idx))
-                        yield sse(BlockOpen(page_index=page_idx, block_type=evt.block_type))
+                            yield sse(BlockClose(page_index=idx))
+                        yield sse(BlockOpen(
+                            page_index=idx,
+                            block_type=evt.block_type,
+                            layout=evt.layout or "default",
+                            visual_emphasis=evt.visual_emphasis or "primary",
+                            icon_hint=evt.icon_hint,
+                        ))
                         block_is_open = True
                     if evt.citation_open is not None:
                         ref_idx, ref_path = _resolve_reference(
-                            evt.citation_open.citation_id, page_ref_ids,
+                            evt.citation_open.citation_id, result.page_ref_ids,
                             context.reference_list,
                         )
                         yield sse(CitationOpen(
                             citation_id=evt.citation_open.citation_id,
                             quote_text=evt.citation_open.quote_text or None,
-                            page_index=page_idx,
+                            page_index=idx,
                             reference_idx=ref_idx,
                             file_path=ref_path,
                         ))
                         page_citations.append(SpeechCitation(
                             action="open",
                             citation_id=evt.citation_open.citation_id,
-                            char_offset=0,  # placeholder; real offset computed in _parse_speech_citations
+                            char_offset=0,
                             quote_text=evt.citation_open.quote_text or None,
                             reference_idx=ref_idx,
                             file_path=ref_path,
@@ -311,131 +384,130 @@ async def run_generate_pages_pipeline(
                         if ref_idx is not None:
                             active_global_ref = ref_idx
                     if evt.text_delta is not None:
-                        yield sse(PageDelta(page_index=page_idx, seq=seq, text=evt.text_delta))
+                        yield sse(PageDelta(page_index=idx, seq=seq, text=evt.text_delta))
                         seq += 1
                         has_content = True
                     if evt.citation_close is not None:
                         yield sse(CitationClose(
                             citation_id=evt.citation_close,
-                            page_index=page_idx,
+                            page_index=idx,
                             reference_idx=active_global_ref,
                         ))
                         page_citations.append(SpeechCitation(
                             action="close",
                             citation_id=evt.citation_close,
-                            char_offset=0,  # placeholder
+                            char_offset=0,
                             reference_idx=active_global_ref,
                         ))
                         active_global_ref = None
 
-            # Close the last block if one is still open
             if block_is_open:
-                yield sse(BlockClose(page_index=page_idx))
+                yield sse(BlockClose(page_index=idx))
 
-            # Extract page content text for speech generation
             page_content_text = extract_answers(page_text) if page_text else ""
 
-            # Check outline again after page generation
             if not outline_emitted and outline_holder.get("data"):
                 yield sse(OutlineComplete(outline=outline_holder["data"]))
                 outline_emitted = True
 
-            # Fallback: if parser found nothing but model DID produce text,
-            # the output is likely raw markdown (structured json not enforced).
-            # Emit the raw text as a single PageDelta inside a readable block.
             if not has_content and page_text.strip():
-                print(f"[INFO] Page {page_idx}: structured json not enforced, falling back to raw markdown")
-                yield sse(BlockOpen(page_index=page_idx, block_type="readable"))
-                yield sse(PageDelta(page_index=page_idx, seq=seq, text=page_text.strip()))
-                yield sse(BlockClose(page_index=page_idx))
+                print(f"[INFO] Page {idx}: structured json not enforced, falling back to raw markdown")
+                yield sse(BlockOpen(page_index=idx, block_type="readable"))
+                yield sse(PageDelta(page_index=idx, seq=seq, text=page_text.strip()))
+                yield sse(BlockClose(page_index=idx))
                 seq += 1
                 has_content = True
 
             if not has_content:
-                print(f"[WARNING] Page {page_idx} produced no content tokens")
-                yield sse(PageError(page_index=page_idx, error="Model produced no content for this page"))
+                print(f"[WARNING] Page {idx} produced no content tokens")
+                yield sse(PageError(page_index=idx, error="Model produced no content for this page"))
 
-            # Emit page.close to signal page content is finalized
-            yield sse(PageClose(page_index=page_idx))
+        yield sse(PageClose(page_index=idx))
 
-            # Build citation metadata for speech generation.
-            # Prefer content-parser citations; fall back to outline-derived metadata.
-            speech_meta = page_citations if page_citations else _build_page_citation_meta(
-                page_ref_ids, context.reference_list,
-            )
+        # --- Speech generation (sequential, with previous_speech context) ---
+        speech_meta = page_citations if page_citations else _build_page_citation_meta(
+            result.page_ref_ids, context.reference_list,
+        )
 
-            # --- Speech generation (sequential, after page content is done) ---
-            page_speech_data = {
-                "page_idx": page_idx,
-                "title": node["title"],
-                "goal": node.get("goal", ""),
-                "context": node.get("context", ""),
-                "page_content": page_content_text,
-                "citations": speech_meta,
-            }
+        # Ensure outline is available for speech (need titles for context)
+        if not outline_emitted:
+            if not outline_task.done():
+                await outline_task
+            if outline_holder.get("data"):
+                yield sse(OutlineComplete(outline=outline_holder["data"]))
+                outline_emitted = True
 
-            if not outline_emitted:
-                # Outline not yet available — buffer for later
-                speech_buffer.append(page_speech_data)
-            else:
-                # Outline available — flush any buffered speeches first
-                for buf in speech_buffer:
-                    outline_obj = outline_holder["data"].get("outline", {})
-                    all_titles = [p["title"] for p in outline_obj.get("pages", [])]
-                    total_pages = len(all_titles)
-                    prev_titles = all_titles[:buf["page_idx"] - 1] if buf["page_idx"] > 1 else []
-                    async for speech_evt in stream_page_speech(
-                        engine=speech_engine,
-                        course_code=params.course_code,
-                        page_index=buf["page_idx"],
-                        page_idx=buf["page_idx"] - 1,
-                        page_title=buf["title"],
-                        goal=buf["goal"],
-                        context=buf["context"],
-                        page_content=buf["page_content"],
-                        total_pages=total_pages,
-                        previous_titles=prev_titles,
-                        previous_speech=last_speech_text,
-                        page_citations=buf["citations"],
-                    ):
-                        yield speech_evt
-                        # Capture full_text from the done event for next page's context
-                        if '"page.speech.done"' in speech_evt:
-                            done_data = json.loads(speech_evt[len("data: "):].strip())
-                            last_speech_text = done_data.get("full_text", "")
-                speech_buffer = []
+        if outline_emitted:
+            outline_obj = outline_holder["data"].get("outline", {})
+            all_titles = [p["title"] for p in outline_obj.get("pages", [])]
+            prev_titles = all_titles[:idx - 1] if idx > 1 else []
+            async for speech_evt in stream_page_speech(
+                engine=speech_engine,
+                course_code=params.course_code,
+                page_index=idx,
+                page_idx=idx - 1,
+                page_title=node["title"],
+                goal=node.get("goal", ""),
+                context=node.get("context", ""),
+                page_content=page_content_text,
+                total_pages=total_pages,
+                previous_titles=prev_titles,
+                previous_speech=last_speech_text,
+                page_citations=speech_meta,
+            ):
+                yield speech_evt
+                if '"page.speech.done"' in speech_evt:
+                    done_data = json.loads(speech_evt[len("data: "):].strip())
+                    last_speech_text = done_data.get("full_text", "")
 
-                # Generate speech for current page
-                outline_obj = outline_holder["data"].get("outline", {})
-                all_titles = [p["title"] for p in outline_obj.get("pages", [])]
-                total_pages = len(all_titles)
-                prev_titles = all_titles[:page_idx - 1] if page_idx > 1 else []
-                async for speech_evt in stream_page_speech(
-                    engine=speech_engine,
-                    course_code=params.course_code,
-                    page_index=page_idx,
-                    page_idx=page_idx - 1,
-                    page_title=node["title"],
-                    goal=node.get("goal", ""),
-                    context=node.get("context", ""),
-                    page_content=page_content_text,
-                    total_pages=total_pages,
-                    previous_titles=prev_titles,
-                    previous_speech=last_speech_text,
-                    page_citations=speech_meta,
-                ):
-                    yield speech_evt
-                    if '"page.speech.done"' in speech_evt:
-                        done_data = json.loads(speech_evt[len("data: "):].strip())
-                        last_speech_text = done_data.get("full_text", "")
+        t_page_emit = _time.monotonic() - t_page_emit_start
+        page_timing[f"page_{idx}_emit_speech"] = t_page_emit
+        print(f"[TIMING] Page {idx}: wait={t_page_wait:.2f}s, emit+speech={t_page_emit:.2f}s")
 
-        except Exception as e:
-            print(f"[ERROR] Page {page_idx} generation failed: {e}")
-            yield sse(PageError(page_index=page_idx, error=str(e)))
+    # === Print timing summary ===
+    t_total_pipeline = _time.monotonic() - _t0
+    t_total = _time.monotonic() - t_parallel_start
+    print("\n" + "=" * 60)
+    print("[TIMING SUMMARY] Full pipeline breakdown")
+    print("=" * 60)
+    for stage, elapsed in sorted(_stage_times.items()):
+        print(f"  {stage}: {elapsed:.2f}s")
+    print(f"  ---")
+    for i in range(1, total_pages + 1):
+        ct = page_results[i].content_time if i in page_results else 0
+        es = page_timing.get(f"page_{i}_emit_speech", 0)
+        wt = page_timing.get(f"page_{i}_wait", 0)
+        print(f"  page_{i}: content={ct:.2f}s  wait={wt:.2f}s  emit+speech={es:.2f}s")
+    # Sequential estimate: sum(content + speech) per page
+    sequential_est = sum(
+        (page_results[i].content_time if i in page_results else 0)
+        + page_timing.get(f"page_{i}_emit_speech", 0)
+        for i in range(1, total_pages + 1)
+    )
+    # Parallel content time = max of individual content times (overlapped)
+    max_content = max(
+        (page_results[i].content_time if i in page_results else 0)
+        for i in range(1, total_pages + 1)
+    ) if total_pages > 0 else 0
+    sum_content = sum(
+        (page_results[i].content_time if i in page_results else 0)
+        for i in range(1, total_pages + 1)
+    )
+    sum_speech = sum(
+        page_timing.get(f"page_{i}_emit_speech", 0)
+        for i in range(1, total_pages + 1)
+    )
+    print(f"  ---")
+    print(f"  content (parallel): {max_content:.2f}s  (sum if sequential: {sum_content:.2f}s → saved {sum_content - max_content:.2f}s)")
+    print(f"  speech (sequential): {sum_speech:.2f}s")
+    print(f"  total_pipeline: {t_total:.2f}s")
+    print(f"  sequential_estimate: {sequential_est:.2f}s")
+    print(f"  speedup (content): {sum_content / max_content:.2f}x" if max_content > 0 else "  speedup: N/A")
+    print(f"  ---")
+    print(f"  TOTAL (end-to-end): {t_total_pipeline:.2f}s")
+    print("=" * 60 + "\n")
 
-        page_idx += 1
-
-    # === Step 6: Ensure outline.complete is emitted ===
+    # === Step 7: Ensure outline.complete is emitted ===
     if not outline_emitted:
         if not outline_task.done():
             await outline_task
@@ -445,34 +517,138 @@ async def run_generate_pages_pipeline(
         elif outline_holder.get("error"):
             yield sse(PageError(page_index=-1, error="Failed to parse outline JSON"))
 
-    # === Step 7: Flush any remaining buffered speeches ===
-    if speech_buffer and outline_emitted:
-        for buf in speech_buffer:
-            outline_obj = outline_holder["data"].get("outline", {})
-            all_titles = [p["title"] for p in outline_obj.get("pages", [])]
-            total_pages = len(all_titles)
-            prev_titles = all_titles[:buf["page_idx"] - 1] if buf["page_idx"] > 1 else []
-            async for speech_evt in stream_page_speech(
-                engine=speech_engine,
-                course_code=params.course_code,
-                page_index=buf["page_idx"],
-                page_idx=buf["page_idx"] - 1,
-                page_title=buf["title"],
-                goal=buf["goal"],
-                context=buf["context"],
-                page_content=buf["page_content"],
-                total_pages=total_pages,
-                previous_titles=prev_titles,
-                previous_speech=last_speech_text,
-                page_citations=buf["citations"],
-            ):
-                yield speech_evt
-                if '"page.speech.done"' in speech_evt:
-                    done_data = json.loads(speech_evt[len("data: "):].strip())
-                    last_speech_text = done_data.get("full_text", "")
+    # Clean up any remaining tasks (should all be done by now)
+    for task in page_tasks:
+        if not task.done():
+            await task
 
     yield sse(Done())
     yield "data: [DONE]\n\n"
+
+
+# ---------------------------------------------------------------------------
+# Parallel page content generation
+# ---------------------------------------------------------------------------
+
+@dataclass
+class PageResult:
+    """Collected output of a single page's content generation."""
+    node: dict
+    chunks: list = field(default_factory=list)          # raw model chunks
+    page_refs: list = field(default_factory=list)        # resolved PageReference list
+    page_ref_ids: list = field(default_factory=list)     # integer ref IDs
+    page_messages: list = field(default_factory=list)    # prompt messages (for debug)
+    error: Optional[str] = None
+    content_time: float = 0.0                            # seconds for content generation
+
+
+async def _generate_page_content_async(
+    page_idx: int,
+    node: dict,
+    context: Any,
+    local_engine: Any,
+    openai_engine: Any,
+    params: Any,
+    render_mode: str,
+    use_openai_pages: bool,
+    page_results: dict,
+    page_ready_events: dict,
+):
+    """
+    Generate content for a single page asynchronously.
+
+    Collects all model chunks into page_results[page_idx], then signals
+    the ready event so the emit loop can process this page.
+    """
+    from app.services.generation.tutor.page_content.query import (
+        build_page_content_context,
+        build_page_content_html_context,
+        build_page_content_interactive_context,
+        build_page_content_explore_context,
+    )
+    from app.services.generation.tutor.page_content.generate import (
+        call_page_content_local,
+        call_page_content_openai,
+        call_page_content_html,
+    )
+
+    import time as _time
+    t_start = _time.monotonic()
+
+    result = PageResult(node=node)
+
+    try:
+        result.page_refs = _resolve_page_references(
+            node.get("reference_ids", []),
+            context.reference_list,
+        )
+        result.page_ref_ids = [
+            int(r) for r in node.get("reference_ids", []) if _safe_int(r) is not None
+        ]
+
+        page_params = PageContentParams(
+            point=node["title"],
+            goal=node["goal"],
+            requirements=node.get("requirements", ""),
+            context=node.get("context", ""),
+            references=result.page_refs,
+            course_code=params.course_code,
+        )
+
+        # Select content generation mode
+        if render_mode == "explore":
+            page_messages = build_page_content_explore_context(page_params)
+            page_stream = await call_page_content_html(
+                page_messages, openai_engine, course=params.course_code,
+            )
+        elif render_mode == "interactive":
+            page_messages = build_page_content_interactive_context(page_params)
+            page_stream = await call_page_content_html(
+                page_messages, openai_engine, course=params.course_code,
+            )
+        elif render_mode == "html":
+            page_messages = build_page_content_html_context(page_params)
+            page_stream = await call_page_content_html(
+                page_messages, openai_engine, course=params.course_code,
+            )
+        elif use_openai_pages:
+            page_messages = build_page_content_context(page_params)
+            page_stream = await call_page_content_openai(
+                page_messages, openai_engine, course=params.course_code,
+            )
+        else:
+            page_messages = build_page_content_context(page_params)
+            page_stream = await call_page_content_local(
+                page_messages, local_engine
+            )
+
+        result.page_messages = page_messages
+
+        # Save prompts for replay/debugging
+        _prompt_dump_dir = os.environ.get("TAI_DUMP_PROMPTS")
+        if _prompt_dump_dir:
+            os.makedirs(_prompt_dump_dir, exist_ok=True)
+            dump_path = os.path.join(_prompt_dump_dir, f"page_{page_idx}_{render_mode}.json")
+            with open(dump_path, "w") as _f:
+                json.dump(
+                    [{"role": m.role, "content": m.content} for m in page_messages],
+                    _f, ensure_ascii=False, indent=2,
+                )
+
+        # Collect all chunks (don't emit SSE yet)
+        async for chunk in page_stream:
+            result.chunks.append(chunk)
+
+        result.content_time = _time.monotonic() - t_start
+        print(f"[TIMING] Page {page_idx} content generated in {result.content_time:.2f}s ({len(result.chunks)} chunks)")
+
+    except Exception as e:
+        result.content_time = _time.monotonic() - t_start
+        print(f"[ERROR] Page {page_idx} content generation failed after {result.content_time:.2f}s: {e}")
+        result.error = str(e)
+
+    page_results[page_idx] = result
+    page_ready_events[page_idx].set()
 
 
 # ---------------------------------------------------------------------------
@@ -795,15 +971,25 @@ async def generate_intro_speech(
     engine: Any,
     course_code: str,
     student_question: str,
+    outline_data: dict,
 ) -> str:
     """
     Generate the intro (page 0) speech that acknowledges the student's
-    question and transitions into the lesson.
+    question, previews the lesson structure, and transitions into the answer.
+    Called after the outline is fully generated so topic and page titles are available.
     """
+    outline_obj = outline_data.get("outline", {})
+    topic = outline_obj.get("topic", "")
+    pages = outline_obj.get("pages", [])
+    page_titles = [p["title"] for p in pages]
+    titles_str = ", ".join(f'"{t}"' for t in page_titles) if page_titles else ""
+
     user_content = (
         f'The student asked: "{student_question}"\n\n'
-        f"Generate a brief spoken intro that acknowledges the student's question "
-        f"and naturally transitions into your answer."
+        f'The lesson will cover: {topic}\n'
+        f'Pages: {titles_str}\n\n'
+        f"Generate a brief spoken intro that acknowledges the student's question, "
+        f"previews what the lesson will cover, and naturally transitions into the answer."
     )
     system = INTRO_SPEECH_SYSTEM_PROMPT.format(course_code=course_code)
     return await generate_speech_script(

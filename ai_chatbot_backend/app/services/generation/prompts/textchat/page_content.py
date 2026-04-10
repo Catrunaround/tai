@@ -32,6 +32,9 @@ A separate speech generator will provide the detailed verbal explanation.
 <block_structure>
 Each block has:
 - "type": "readable" (slide text) or "not_readable" (code, formulas, tables).
+- "layout": Visual layout hint (see <visual_hints> below).
+- "visual_emphasis": "primary" (main point), "secondary" (supporting), or "accent" (attention).
+- "icon_hint": Semantic icon or null. One of: "lightbulb" (insight), "warning" (pitfall), "code" (code-related), "formula" (math), "check" (confirmed fact), "question" (open question), or null.
 - "citations": Quote the specific text from references that supports this block (1–2 per block).
 - "open": true to open the reference file on the student's screen.
 - "markdown_content": The slide content.
@@ -42,6 +45,45 @@ Typical flow:
 2. Block (not_readable): Code snippet, formula, or diagram.
 3. Block (readable, close=true): A key takeaway or definition, then close the reference.
 </block_structure>
+
+<visual_hints>
+Each block MUST include visual layout hints to create polished, card-style slides:
+- "layout": How this block should be visually presented.
+  - "default": Standard text block — use for general explanations and transitions.
+  - "centered": Key definition or takeaway, displayed prominently in center — use for the single most important point.
+  - "highlight-box": Important callout with colored background — use for warnings, tips, or key rules.
+  - "definition": Term + definition card layout — use when introducing and defining a specific term.
+  - "comparison": Side-by-side comparison content — use when contrasting two concepts (use markdown table or list).
+  - "steps": Part of a step-by-step sequence — use for numbered procedures or algorithms.
+- "visual_emphasis": Match to the block's importance on the slide.
+  - "primary": The main teaching point of this slide.
+  - "secondary": Supporting detail or elaboration.
+  - "accent": Something that should grab attention (a surprising fact, common mistake).
+- "icon_hint": Choose an icon that matches the content's nature, or null if none fits.
+
+RULES:
+- Choose layout and emphasis intentionally — variety across blocks makes the slide visually engaging.
+- Not_readable blocks (code/formulas/tables): always use layout="default", visual_emphasis="primary", icon_hint="code" or "formula".
+- "steps" layout: each block = ONE step. If you have N steps, create N separate blocks each with layout="steps".
+  Do NOT put multiple steps in one block. Do NOT use markdown numbered lists inside a steps block — the step number is rendered automatically by the frontend.
+- "icon_hint": prefer null when no icon genuinely adds value. Do not force an icon on every block.
+  - "lightbulb": new insight or key idea
+  - "warning": common mistake or pitfall
+  - "code": code-related explanation (not for code blocks themselves)
+  - "formula": math-related explanation
+  - "check": confirmed fact or verified rule
+  - "question": genuinely asking the student to think
+  - null: default — use when no icon adds value
+
+STRUCTURE VARIETY:
+- Do NOT follow a fixed formula. Not every page needs a definition block, a code block, and a warning.
+- Let the teaching GOAL drive the structure:
+  - If the goal is to show how something works → lead with a concrete example or code, then explain
+  - If the goal is to compare two things → use a comparison layout as the centerpiece
+  - If the goal is to teach a procedure → use steps
+  - If the goal is to introduce a concept → a definition block makes sense, but not always as the first block
+- Vary structure across pages. If the previous page opened with a definition, try a different opening here.
+</visual_hints>
 
 <content_style>
 SLIDE CONTENT — NOT A SCRIPT:
@@ -59,6 +101,9 @@ INFORMATION DENSITY:
 - Put definitions, key terms, and core ideas in readable blocks.
 - Put code examples, formulas, and tables in not_readable blocks.
 - Do NOT write lengthy explanations — the speech handles that.
+
+BLOCK COUNT:
+- Aim for 3–6 blocks per page. Fewer than 3 feels empty; more than 6 feels crowded.
 </content_style>
 
 <method>
@@ -106,11 +151,53 @@ A separate speech generator will provide the detailed verbal explanation.
 <block_structure>
 Each block has:
 - "type": "readable" (slide text) or "not_readable" (code, formulas, tables).
+- "layout": Visual layout hint (see <visual_hints> below).
+- "visual_emphasis": "primary" (main point), "secondary" (supporting), or "accent" (attention).
+- "icon_hint": Semantic icon or null. One of: "lightbulb" (insight), "warning" (pitfall), "code" (code-related), "formula" (math), "check" (confirmed fact), "question" (open question), or null.
 - "citations": Empty array (no references available).
 - "open": Always false.
 - "markdown_content": The slide content.
 - "close": Always false.
 </block_structure>
+
+<visual_hints>
+Each block MUST include visual layout hints to create polished, card-style slides:
+- "layout": How this block should be visually presented.
+  - "default": Standard text block — use for general explanations and transitions.
+  - "centered": Key definition or takeaway, displayed prominently in center — use for the single most important point.
+  - "highlight-box": Important callout with colored background — use for warnings, tips, or key rules.
+  - "definition": Term + definition card layout — use when introducing and defining a specific term.
+  - "comparison": Side-by-side comparison content — use when contrasting two concepts (use markdown table or list).
+  - "steps": Part of a step-by-step sequence — use for numbered procedures or algorithms.
+- "visual_emphasis": Match to the block's importance on the slide.
+  - "primary": The main teaching point of this slide.
+  - "secondary": Supporting detail or elaboration.
+  - "accent": Something that should grab attention (a surprising fact, common mistake).
+- "icon_hint": Choose an icon that matches the content's nature, or null if none fits.
+
+RULES:
+- Choose layout and emphasis intentionally — variety across blocks makes the slide visually engaging.
+- Not_readable blocks (code/formulas/tables): always use layout="default", visual_emphasis="primary", icon_hint="code" or "formula".
+- "steps" layout: each block = ONE step. If you have N steps, create N separate blocks each with layout="steps".
+  Do NOT put multiple steps in one block. Do NOT use markdown numbered lists inside a steps block — the step number is rendered automatically by the frontend.
+- "icon_hint": prefer null when no icon genuinely adds value. Do not force an icon on every block.
+  - "lightbulb": new insight or key idea
+  - "warning": common mistake or pitfall
+  - "code": code-related explanation (not for code blocks themselves)
+  - "formula": math-related explanation
+  - "check": confirmed fact or verified rule
+  - "question": genuinely asking the student to think
+  - null: default — use when no icon adds value
+
+STRUCTURE VARIETY:
+- Do NOT follow a fixed formula. Not every page needs a definition block, a code block, and a warning.
+- Let the teaching GOAL drive the structure:
+  - If the goal is to show how something works → lead with a concrete example or code, then explain
+  - If the goal is to compare two things → use a comparison layout as the centerpiece
+  - If the goal is to teach a procedure → use steps
+  - If the goal is to introduce a concept → a definition block makes sense, but not always as the first block
+- Vary structure across pages. If the previous page opened with a definition, try a different opening here.
+</visual_hints>
 
 <content_style>
 SLIDE CONTENT — NOT A SCRIPT:
@@ -127,6 +214,9 @@ INFORMATION DENSITY:
 - Put definitions, key terms, and core ideas in readable blocks.
 - Put code examples, formulas, and tables in not_readable blocks.
 - Do NOT write lengthy explanations — the speech handles that.
+
+BLOCK COUNT:
+- Aim for 3–6 blocks per page. Fewer than 3 feels empty; more than 6 feels crowded.
 </content_style>
 
 <method>

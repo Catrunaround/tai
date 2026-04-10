@@ -2,15 +2,58 @@ from typing import Any, List, Optional
 
 from app.core.models.chat_completion import Message
 from app.services.generation.model_call import (
+    SAMPLING_PARAMS,
     is_openai_client,
-    generate_streaming_response,
     call_remote_engine,
 )
 from app.services.generation.schemas import (
-    RESPONSE_BLOCKS_OPENAI_FORMAT,
+    RESPONSE_BLOCKS_JSON_SCHEMA,
     VOICE_TUTOR_OPENAI_FORMAT,
+    VOICE_TUTOR_RESPONSE_SCHEMA,
     OUTLINE_OPENAI_FORMAT,
+    OUTLINE_JSON_SCHEMA,
 )
+
+
+def _select_json_schema(outline_mode: bool, audio_response: bool):
+    """Select the raw JSON schema for guided decoding based on mode flags."""
+    if outline_mode:
+        return OUTLINE_JSON_SCHEMA
+    elif audio_response:
+        return VOICE_TUTOR_RESPONSE_SCHEMA
+    else:
+        return RESPONSE_BLOCKS_JSON_SCHEMA
+
+
+async def _generate_tutor_local(messages: List[Message], engine: Any, json_schema: dict):
+    """
+    Call local vLLM for tutor with guided JSON decoding.
+
+    Uses extra_body={"json": schema} for structured output — same pattern
+    as generate_bullets.py. Keeps thinking enabled; the base handler
+    separates reasoning_content from content automatically.
+    """
+    from app.config import settings
+
+    chat = [{"role": m.role, "content": m.content} for m in messages]
+
+    stream = await engine.chat.completions.create(
+        model=settings.vllm_chat_model,
+        messages=chat,
+        stream=True,
+        temperature=SAMPLING_PARAMS["temperature"],
+        top_p=SAMPLING_PARAMS["top_p"],
+        max_tokens=SAMPLING_PARAMS["max_tokens"],
+        extra_body={
+            **SAMPLING_PARAMS["extra_body"],
+            "json": json_schema,
+        },
+    )
+
+    async for chunk in stream:
+        if chunk.choices:
+            yield chunk
+
 
 # TODO： add a new function to separate the voice explanation and text explanation.
 async def call_tutor_model(
@@ -32,9 +75,11 @@ async def call_tutor_model(
     Returns either a streaming iterator or a complete response string.
     """
     if is_openai_client(engine):
-        return generate_streaming_response(messages, engine)
+        # Local vLLM path — use guided JSON decoding
+        json_schema = _select_json_schema(outline_mode, audio_response)
+        return _generate_tutor_local(messages, engine, json_schema)
 
-    # Debug: print full prompt before sending to model
+
     print("\n" + "=" * 60)
     print("[DEBUG] Full prompt sent to tutor model:")
     print("=" * 60)
@@ -45,7 +90,6 @@ async def call_tutor_model(
         print(content)
     print("=" * 60 + "\n")
 
-    # Remote engine: select JSON schema
     if outline_mode:
         response_format = OUTLINE_OPENAI_FORMAT
     elif audio_response:

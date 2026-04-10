@@ -104,6 +104,9 @@ class BlockOpen(BaseEvt):
     type: Literal["block.open"] = "block.open"
     page_index: int = Field(ge=0)
     block_type: Literal["readable", "not_readable"]
+    layout: str = "default"
+    visual_emphasis: str = "primary"
+    icon_hint: Optional[str] = None
 
 class BlockClose(BaseEvt):
     model_config = ConfigDict(extra="forbid")
