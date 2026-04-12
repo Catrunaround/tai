@@ -11,6 +11,12 @@ PYTHON = $(POETRY) run python
 PIP = $(POETRY) run pip
 PYTEST = $(POETRY) run pytest
 
+# NVIDIA library paths for PyTorch bundled cuDNN/cuBLAS (needed for GPU inference)
+NVIDIA_PKGS := $(shell $(PYTHON) -c "import nvidia; print(nvidia.__path__[0])" 2>/dev/null)
+ifdef NVIDIA_PKGS
+export LD_LIBRARY_PATH := $(NVIDIA_PKGS)/cudnn/lib:$(NVIDIA_PKGS)/cublas/lib:$(NVIDIA_PKGS)/cuda_nvrtc/lib
+endif
+
 # Default target
 help: ## Show this help message
 	@echo "RAG Pipeline - Poetry + Local .venv"
@@ -104,9 +110,17 @@ dev-api: ## Start FastAPI development server
 	@echo "🚀 Starting RAG API server..."
 	$(POETRY) run uvicorn file_conversion_router.api:app --reload --port 8001
 
-test: ## Run all tests
+test: ## Run all tests (excludes OCR/GPU tests)
 	@echo "🧪 Running all tests..."
-	$(PYTEST) tests
+	$(PYTEST) tests -m "not ocr and not gpu"
+
+test-all: ## Run all tests including OCR/GPU
+	@echo "🧪 Running all tests (including OCR/GPU)..."
+	$(PYTEST) tests -v
+
+test-ocr: ## Run OCR tests (MinerU + WhisperX)
+	@echo "🧪 Running OCR tests..."
+	$(PYTEST) tests -m ocr -v
 
 # Code quality
 lint: ## Run linting checks on RAG files only
@@ -234,6 +248,11 @@ export: ## Export requirements.txt for deployment
 	@echo "📦 Exporting requirements.txt with Poetry..."
 	$(POETRY) export --format=requirements.txt --output=requirements.txt --without-hashes
 	@echo "✅ requirements.txt generated from pyproject.toml!"
+
+save-env: ## Save current conda/pip environment snapshot
+	@echo "📦 Saving environment snapshot..."
+	$(PIP) freeze > yk_env2_requirements.txt
+	@echo "✅ Environment saved to yk_env2_requirements.txt ($(shell wc -l < yk_env2_requirements.txt) packages)"
 
 lock: ## Update poetry.lock file
 	@echo "🔒 Updating poetry.lock..."
