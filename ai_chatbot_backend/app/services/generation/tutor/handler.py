@@ -127,7 +127,7 @@ class OutlineHandler(BaseStreamHandler):
         return TransformResult()
 
     def extract_references(self, final_text: str) -> Set[int]:
-        """Extract all reference IDs from outline bullets."""
+        """Extract all reference IDs from outline nodes."""
         mentioned = set()
         try:
             text = final_text.strip()
@@ -137,18 +137,19 @@ class OutlineHandler(BaseStreamHandler):
 
             json_data = json.loads(text)
 
-            # Outline structure: {"title": "...", "bullets": [{"references": [1, 2]}]}
-            if isinstance(json_data, dict) and isinstance(json_data.get("bullets"), list):
-                for bullet in json_data["bullets"]:
-                    if not isinstance(bullet, dict):
-                        continue
-                    refs = bullet.get("references", [])
-                    if isinstance(refs, list):
-                        for ref_id in refs:
-                            try:
-                                mentioned.add(int(ref_id))
-                            except (TypeError, ValueError):
-                                continue
+            # Outline structure: {"outline": {"pages": [{"reference_ids": [1, 2]}]}}
+            outline_obj = json_data.get("outline", {}) if isinstance(json_data, dict) else {}
+            nodes = outline_obj.get("pages", []) if isinstance(outline_obj, dict) else []
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                refs = node.get("reference_ids", [])
+                if isinstance(refs, list):
+                    for ref_id in refs:
+                        try:
+                            mentioned.add(int(ref_id))
+                        except (TypeError, ValueError):
+                            continue
 
             print(f"\n[INFO] Outline mentioned references: {mentioned}")
 

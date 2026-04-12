@@ -156,69 +156,65 @@ VOICE_TUTOR_OPENAI_FORMAT = {
 }
 
 # ========================
-# Outline JSON Schema (for tutor outline mode)
+# Outline JSON Schema (for tutor outline mode — flat content pages, page 1 onward)
 # ========================
 
-OUTLINE_BULLET_SCHEMA = {
+OUTLINE_PAGE_SCHEMA = {
     "type": "object",
     "properties": {
-        "point": {
+        "page_id": {
             "type": "string",
-            "description": "The teaching goal for this page — what the student should learn."
+            "description": "Unique identifier for this page: '1', '2', '3', etc."
         },
-        "purpose": {
+        "title": {
             "type": "string",
-            "description": (
-                "A model-facing instruction for the downstream content generator. "
-                "Describes HOW to explain this page's knowledge to the student: "
-                "what pedagogical approach to use, what examples or analogies to include, "
-                "what depth of detail to aim for, and how to structure the explanation. "
-                "Not shown to students."
-            )
+            "description": "Specific, instructionally clear title for this page."
         },
-        "references": {
+        "goal": {
+            "type": "string",
+            "description": "What this page's explanation needs to achieve — the learning outcome the student should walk away with."
+        },
+        "requirements": {
+            "type": "string",
+            "description": "What the explanation must cover and acceptance criteria for when it is done well."
+        },
+        "context": {
+            "type": "string",
+            "description": "Free-text guidance for the content generator: prerequisite knowledge from prior pages, scope boundaries (what NOT to cover), and connection to the student's question."
+        },
+        "reference_ids": {
             "type": "array",
             "items": {"type": "integer"},
-            "minItems": 1,
-            "description": "Reference numbers that provide evidence for this teaching point. At least one required."
+            "description": "Reference numbers relevant to this page's topic. Empty array if none."
         },
     },
-    "required": ["point", "purpose", "references"],
+    "required": ["page_id", "title", "goal", "requirements", "context", "reference_ids"],
+    "additionalProperties": False
+}
+
+OUTLINE_OBJECT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "topic": {
+            "type": "string",
+            "description": "The main topic name for this teaching outline."
+        },
+        "pages": {
+            "type": "array",
+            "items": OUTLINE_PAGE_SCHEMA,
+            "description": "Content pages (page 1 onward) in teaching order. Page 0 is the overview page auto-assembled from these titles and is not included here."
+        },
+    },
+    "required": ["topic", "pages"],
     "additionalProperties": False
 }
 
 OUTLINE_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "needs_multiple_pages": {
-            "type": "boolean",
-            "description": (
-                "true if the student's question requires multiple pages to explain "
-                "thoroughly (multi-step concepts, prerequisites, etc.). "
-                "false if a single page is sufficient (simple factual question, definition, etc.). "
-                "When false, still produce exactly one bullet."
-            )
-        },
-        "title": {
-            "type": "string",
-            "description": "A clear, descriptive title for this teaching outline."
-        },
-        "outline": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "High-level page titles only — one string per page. "
-                "This is the clean outline the student sees before detailed content is generated. "
-                "Each entry must match the corresponding bullet's 'point' field exactly."
-            )
-        },
-        "bullets": {
-            "type": "array",
-            "items": OUTLINE_BULLET_SCHEMA,
-            "description": "Ordered list of page teaching goals with supporting evidence."
-        },
+        "outline": OUTLINE_OBJECT_SCHEMA,
     },
-    "required": ["needs_multiple_pages", "title", "outline", "bullets"],
+    "required": ["outline"],
     "additionalProperties": False
 }
 
@@ -279,9 +275,8 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
             "type": "string",
             "enum": ["readable", "not_readable"],
             "description": (
-                '"readable" for narration text that will be spoken aloud by TTS. '
-                '"not_readable" for visual-only content (code, formulas, tables) '
-                'shown on screen but not spoken.'
+                '"readable" for concise slide text (definitions, key points). '
+                '"not_readable" for visual-only content (code, formulas, tables).'
             )
         },
         "citations": {
@@ -296,8 +291,8 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
         "markdown_content": {
             "type": "string",
             "description": (
-                "For readable blocks: natural language narration written to be spoken aloud. "
-                "For not_readable blocks: code, formulas, or tables displayed visually only."
+                "For readable blocks: concise slide text — key definitions, short statements. "
+                "For not_readable blocks: code, formulas, or tables."
             )
         },
         "close": {
@@ -312,27 +307,16 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
 PAGE_CONTENT_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "sub_bullets": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": (
-                "Knowledge sub-points for this page. If the page's teaching goal is "
-                "straightforward, this can be a single entry matching the page title. "
-                "If the topic needs decomposition, list 2–5 specific sub-points. "
-                "These are shown to the student as a mini table-of-contents before the narration."
-            )
-        },
         "blocks": {
             "type": "array",
             "items": PAGE_CONTENT_TTS_BLOCK_SCHEMA,
             "description": (
-                "Ordered narration blocks. Each block declares its type (readable or not_readable), "
-                "can open/close a reference file, and contains markdown content. Readable blocks "
-                "are spoken aloud by TTS; not_readable blocks are displayed visually only."
+                "Ordered slide content blocks. Readable blocks contain concise text (definitions, "
+                "key points); not_readable blocks contain code, formulas, or tables."
             )
         },
     },
-    "required": ["sub_bullets", "blocks"],
+    "required": ["blocks"],
     "additionalProperties": False
 }
 

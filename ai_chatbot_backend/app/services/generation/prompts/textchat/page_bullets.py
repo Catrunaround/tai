@@ -19,7 +19,7 @@ You are generating structured sub-bullets for a single page of a teaching presen
 <task>
 You are given:
 - A "point" (the student-facing page title — what this page should teach).
-- A "purpose" (an internal instruction describing HOW to explain this page — pedagogical approach, examples, depth).
+- A "goal" (what this page's explanation needs to achieve — the learning outcome the student should walk away with).
 - Reference materials from the course that support this teaching point.
 
 Your job: Break down this page's teaching goal into specific sub-bullets. Each sub-bullet is a concrete knowledge point or step that a narration model will later expand into explanatory text.
@@ -27,7 +27,7 @@ Your job: Break down this page's teaching goal into specific sub-bullets. Each s
 
 <method>
 1. Read the reference materials carefully.
-2. Follow the purpose instruction — it specifies the pedagogical approach, examples, analogies, and depth.
+2. Follow the goal — it specifies what the student should understand after this page.
 3. Identify the 2–5 most important sub-topics or steps needed to teach this page's concept.
 4. For each sub-bullet, assign the reference numbers that contain supporting evidence.
 5. Order sub-bullets logically — definitions before applications, simple before complex.
@@ -58,13 +58,13 @@ You are generating structured sub-bullets for a single page of a teaching presen
 <task>
 You are given:
 - A "point" (the student-facing page title — what this page should teach).
-- A "purpose" (an internal instruction describing HOW to explain this page).
+- A "goal" (what this page's explanation needs to achieve).
 
 No reference materials are available for this page. Use your general knowledge to identify the key sub-topics.
 </task>
 
 <method>
-1. Follow the purpose instruction — it specifies the pedagogical approach, examples, analogies, and depth.
+1. Follow the goal — it specifies what the student should understand after this page.
 2. Identify the 2–5 most important sub-topics or steps needed to teach this page's concept.
 3. Order sub-bullets logically — definitions before applications, simple before complex.
 </method>
