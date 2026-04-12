@@ -1,4 +1,4 @@
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 import requests
 import time
 import re
@@ -7,7 +7,7 @@ from .driver import Driver, Resp
 
 
 class PlaywrightDriver(Driver):
-    def __init__(self, headless=True, timeout=60000, max_retries=3, block_resources=True, requests_timeout=60, browser_type="chromium", skip_login_pages=True, cookies=None):
+    def __init__(self, headless=True, timeout=60000, max_retries=3, block_resources=True, requests_timeout=60, browser_type="chromium", skip_login_pages=True, cookies=None, bot_check_timeout=30000):
         self._play = None
         self._browser = None
         self._context = None
@@ -20,6 +20,7 @@ class PlaywrightDriver(Driver):
         self._browser_type = browser_type  # chromium, firefox, or webkit
         self._skip_login_pages = skip_login_pages
         self._cookies = cookies  # Optional cookies for authenticated sessions
+        self._bot_check_timeout = bot_check_timeout  # Max ms to wait for bot challenges to resolve
         self._initialize_browser()
 
     def _initialize_browser(self):
@@ -71,11 +72,52 @@ class PlaywrightDriver(Driver):
     def _block_resources(self, route):
         """Block unnecessary resources to speed up page loading"""
         resource_type = route.request.resource_type
-        # Block images, fonts, media, and some scripts to speed up loading
-        if resource_type in ["image", "font", "media", "stylesheet"]:
+        # Block images, fonts, and media to speed up loading
+        # Note: stylesheets and scripts are NOT blocked as they are often
+        # required for bot detection challenges to resolve
+        if resource_type in ["image", "font", "media"]:
             route.abort()
         else:
             route.continue_()
+
+    def _safe_title(self):
+        """Get page title, returning empty string if the execution context was destroyed."""
+        try:
+            return self._page.title() or ""
+        except PlaywrightError:
+            return ""
+
+    def _is_bot_challenge(self):
+        """Detect if the current page is a bot detection/challenge page."""
+        title = self._safe_title().lower()
+        bot_challenge_titles = [
+            "making sure you're not a bot",
+            "just a moment",
+            "checking your browser",
+            "please wait",
+            "attention required",
+            "security check",
+            "verifying you are human",
+            "one more step",
+        ]
+        return any(phrase in title for phrase in bot_challenge_titles)
+
+    def _wait_for_bot_challenge(self):
+        """Wait for a bot detection challenge to resolve by polling the page title."""
+        if not self._is_bot_challenge():
+            return
+        print("Bot detection challenge detected, waiting for it to resolve...")
+        poll_interval = 2000  # ms
+        elapsed = 0
+        while elapsed < self._bot_check_timeout:
+            self._page.wait_for_timeout(poll_interval)
+            elapsed += poll_interval
+            if not self._is_bot_challenge():
+                print(f"Bot challenge resolved after {elapsed}ms")
+                # Give extra time for the real page to fully render
+                self._page.wait_for_timeout(2000)
+                return
+        print(f"Bot challenge did not resolve within {self._bot_check_timeout}ms")
 
     def _requires_login(self, url, html_content):
         """
@@ -150,10 +192,31 @@ class PlaywrightDriver(Driver):
                 # Check if this triggered a download (binary file)
                 # If response is None or returns a non-HTML content type, it's likely a download
                 if resp and resp.ok:
-                    # Wait a bit for dynamic content to load
-                    self._page.wait_for_timeout(2000)  # 2 seconds
+                    # Wait for full page load (survives JS-initiated navigations/redirects)
+                    try:
+                        self._page.wait_for_load_state("load", timeout=self._timeout)
+                    except PlaywrightTimeoutError:
+                        pass  # Some pages never fully "load" -- proceed with what we have
 
-                    html_content = self._page.content()
+                    # Wait for network to settle — catches JS-initiated navigations/redirects
+                    # that fire after the initial "load" event (e.g. wiki.ros.org double-nav)
+                    try:
+                        self._page.wait_for_load_state("networkidle", timeout=self._timeout)
+                    except PlaywrightTimeoutError:
+                        pass  # Some pages never reach networkidle -- proceed with what we have
+
+                    # Brief additional wait for late-firing dynamic content
+                    self._page.wait_for_timeout(1000)
+
+                    # Detect and wait for bot detection challenges to resolve
+                    self._wait_for_bot_challenge()
+
+                    try:
+                        html_content = self._page.content()
+                    except PlaywrightError:
+                        # Context was destroyed by a late navigation; wait for the new page to load
+                        self._page.wait_for_load_state("networkidle", timeout=self._timeout)
+                        html_content = self._page.content()
 
                     # Check if the page requires login
                     if self._skip_login_pages and self._requires_login(resp.url, html_content):
@@ -161,7 +224,7 @@ class PlaywrightDriver(Driver):
                         raise Exception(f"LOGIN_REQUIRED: {url} requires authentication")
 
                     # Get page title safely and sanitize for filename
-                    title = self._page.title()
+                    title = self._safe_title()
                     if title:
                         title = title.strip()
                         # Sanitize title: remove invalid filename characters

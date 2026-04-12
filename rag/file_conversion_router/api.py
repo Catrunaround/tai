@@ -922,7 +922,7 @@ if __name__ == "__main__":
 
     # Convert and embed a single course
     convert_directory(
-        "/home/bot/bot/yk/YK_final/course_yaml/CS 61A_config.yaml",
+        "/home/bot/bot/yk/YK_final/course_yaml/EECS 106B_config.yaml",
         auto_embed=True
     )
 
@@ -934,6 +934,6 @@ if __name__ == "__main__":
     # Get courses needing update
     # courses = get_courses_needing_update()
     # print(f"Courses needing update: {[c['name'] for c in courses]}")
-#     merge_course_databases_into_collective(course_db_paths=["/home/bot/bot/yk/YK_final/courses_out/db/CS 61A_metadata.db"],
-#     collective_db_path="/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db"
-# )
+    merge_course_databases_into_collective(course_db_paths=["/home/bot/bot/yk/YK_final/courses_out/db/EECS 106B_metadata.db"],
+    collective_db_path="/home/bot/bot/yk/YK_final/courses_out/collective_metadata.db"
+)

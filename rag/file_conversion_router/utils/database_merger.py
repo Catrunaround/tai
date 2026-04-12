@@ -411,6 +411,9 @@ def split_course_from_collective(
 
         logging.info(f"Found {len(files)} files for course '{course_code}'")
 
+        # Check which columns exist in course database (once, outside loop)
+        course_columns = [col[1] for col in course_conn.execute("PRAGMA table_info(file)").fetchall()]
+
         # Copy files and related data
         for file_row in files:
             file_uuid = file_row['uuid']
@@ -421,17 +424,33 @@ def split_course_from_collective(
             description_value = file_row['description'] if 'description' in file_keys else None
             # Handle vector field (file embedding) - may not exist in older databases
             vector_value = file_row['vector'] if 'vector' in file_keys else None
+            # Handle timestamp fields - preserve original timestamps
+            created_at_value = file_row['created_at'] if 'created_at' in file_keys else None
+            update_time_value = file_row['update_time'] if 'update_time' in file_keys else None
 
-            course_conn.execute("""
-                INSERT OR REPLACE INTO file (uuid, file_hash, sections, relative_path,
-                                           course_code, course_name, file_name, description, extra_info, url, vector)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
+            base_columns = "uuid, file_hash, sections, relative_path, course_code, course_name, file_name, description, extra_info, url, vector"
+            base_values = "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+            base_params = [
                 file_row['uuid'], file_row['file_hash'], file_row['sections'],
                 file_row['relative_path'], file_row['course_code'], file_row['course_name'],
                 file_row['file_name'], description_value, file_row['extra_info'], file_row['url'],
                 vector_value
-            ))
+            ]
+
+            if 'created_at' in course_columns:
+                base_columns += ", created_at"
+                base_values += ", COALESCE(?, datetime('now', 'localtime'))"
+                base_params.append(created_at_value)
+
+            if 'update_time' in course_columns:
+                base_columns += ", update_time"
+                base_values += ", COALESCE(?, datetime('now', 'localtime'))"
+                base_params.append(update_time_value)
+
+            course_conn.execute(f"""
+                INSERT OR REPLACE INTO file ({base_columns})
+                VALUES ({base_values})
+            """, base_params)
             split_stats["files"] += 1
 
             # Copy chunks for this file
