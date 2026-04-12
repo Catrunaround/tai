@@ -368,7 +368,7 @@ class BaseConverter(ABC):
             Tuple of (markdown_content, content_dict)
             Returns ("", {}) if all retries fail
         """
-        # Backup state for video files before retry attempts
+        # Backup state before retry attempts
         json_backup = None
         index_helper_backup = None
 
@@ -382,17 +382,17 @@ class BaseConverter(ABC):
                 except Exception as e:
                     self._logger.warning(f"Failed to backup JSON: {e}")
 
-            # Backup index_helper if it exists
-            if hasattr(self, 'index_helper') and self.index_helper:
-                import copy
-                index_helper_backup = copy.deepcopy(self.index_helper)
-                self._logger.info(f"📦 Backed up index_helper state for {self.file_name}")
+        # Backup index_helper for all file types (it gets mutated during processing)
+        if hasattr(self, 'index_helper') and self.index_helper:
+            import copy
+            index_helper_backup = copy.deepcopy(self.index_helper)
+            self._logger.info(f"📦 Backed up index_helper state for {self.file_name}")
 
         for attempt in range(1, max_retries + 1):
             # Restore state before each retry (skip for attempt 1)
-            if attempt > 1 and file_type in ["mp4", "mkv", "webm", "mov"]:
-                # Restore JSON file
-                if json_backup:
+            if attempt > 1:
+                # Restore JSON file (video files only)
+                if json_backup and file_type in ["mp4", "mkv", "webm", "mov"]:
                     json_path = input_md_path.with_suffix(".json")
                     try:
                         with open(json_path, "w", encoding="utf-8") as f:
@@ -401,7 +401,7 @@ class BaseConverter(ABC):
                     except Exception as e:
                         self._logger.warning(f"Failed to restore JSON: {e}")
 
-                # Restore index_helper
+                # Restore index_helper for all file types
                 if index_helper_backup:
                     import copy
                     self.index_helper = copy.deepcopy(index_helper_backup)
@@ -484,11 +484,17 @@ class BaseConverter(ABC):
         titles_with_levels = []
 
         # Get valid titles from index_helper if available
+        # Handles both Stage 1 (list of dicts) and Stage 2/3 (dict with tuple keys)
         valid_titles = set()
         if hasattr(self, 'index_helper') and self.index_helper:
-            for item in self.index_helper:
-                for title in item.keys():
-                    valid_titles.add(title)
+            if isinstance(self.index_helper, list):
+                for item in self.index_helper:
+                    for title in item.keys():
+                        valid_titles.add(title.replace('*', '').strip())
+            elif isinstance(self.index_helper, dict):
+                for path_key in self.index_helper.keys():
+                    title = path_key[-1] if isinstance(path_key, tuple) else path_key
+                    valid_titles.add(title.replace('*', '').strip())
 
         for line in content_text.splitlines():
             if line.startswith("#"):
@@ -634,6 +640,8 @@ class BaseConverter(ABC):
         for i, line in enumerate(lines):
             if line.startswith("#"):
                 title = line.strip().lstrip("#").strip()
+                # Strip markdown bold/italic formatting to avoid matching failures
+                title = title.replace('*', '').strip()
                 if title == "":
                     continue
                 self.index_helper.append({title: i + 1})
@@ -707,7 +715,7 @@ class BaseConverter(ABC):
             stripped = raw.lstrip()# ignore leading spaces
             if stripped.startswith("#"):
                 header_text = stripped.lstrip("#").strip()
-                header_text = header_text.lstrip("*").rstrip("*").strip()  # Remove leading/trailing asterisks
+                header_text = header_text.replace('*', '').strip()  # Remove all markdown bold/italic formatting
                 header_lines[header_text] = ln
         # Walk the existing helper and attach line numbers
         for path, page_idx in list(self.index_helper.items()):

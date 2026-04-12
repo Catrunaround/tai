@@ -64,6 +64,8 @@ class PdfConverter(BaseConverter):
                 title = item['text'].strip()
                 if title.startswith('# '):
                     title = title[2:]
+                # Strip markdown bold/italic formatting to avoid matching failures
+                title = title.replace('*', '').strip()
 
                 skip_patterns = [
                     re.compile(r'^\s*ROAR ACADEMY EXERCISES\s*$', re.I),
@@ -72,16 +74,20 @@ class PdfConverter(BaseConverter):
                 if any(p.match(title) for p in skip_patterns):
                     continue
 
+                if not title:
+                    continue
+
                 # Check if title appears after any number of # symbols
                 if md:
                     lines = md.split('\n')
                     title_found = False
                     for line in lines:
                         stripped_line = line.strip()
-                        if stripped_line.startswith('#') and title in stripped_line:
-                            # More precise check: extract the heading text
+                        if stripped_line.startswith('#'):
+                            # Extract and normalize heading text for comparison
                             heading_text = re.sub(r'^#+\s*', '', stripped_line).strip()
-                            if heading_text == title:
+                            heading_text_clean = heading_text.replace('*', '').strip()
+                            if heading_text_clean == title:
                                 title_found = True
                                 break
 
