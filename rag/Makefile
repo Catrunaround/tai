@@ -112,6 +112,7 @@ dev-api: ## Start FastAPI development server
 
 dev-convert-api: ## Start standalone conversion API service
 	@echo "🚀 Starting conversion API server on port 8010..."
+	LD_LIBRARY_PATH="$$(python3 -c 'import site; print(site.getsitepackages()[0])')/nvidia/cudnn/lib:$$(python3 -c 'import site; print(site.getsitepackages()[0])')/nvidia/cublas/lib:$$(python3 -c 'import site; print(site.getsitepackages()[0])')/nvidia/cuda_nvrtc/lib" \
 	$(POETRY) run uvicorn file_conversion_router.conversion_api:app --host 0.0.0.0 --port 8010
 
 test: ## Run all tests (excludes OCR/GPU tests)
