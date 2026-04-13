@@ -2,7 +2,8 @@ from typing import Optional, List
 from uuid import UUID
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Path, UploadFile, File, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from app.core.dbs.metadata_db import get_metadata_db
 from app.api.deps import verify_api_token
@@ -11,6 +12,10 @@ from app.services.file_service import file_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Maximum upload size for student files (50 MB)
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+_ALLOWED_EXTENSIONS = {".pdf"}
 
 
 @router.get(
@@ -274,4 +279,95 @@ async def get_file_extra_info(
         logger.error(f"Raw extra_info: {file_record.extra_info[:500] if file_record.extra_info else None}")
         # Return empty array if parsing fails
         return []
+
+
+# ---------------------------------------------------------------------------
+# Student file upload  (session-scoped, in-memory only, no DB writes)
+# ---------------------------------------------------------------------------
+
+@router.post("/upload", summary="Upload a file for session-scoped RAG")
+async def upload_file_for_session(
+    file: UploadFile = File(...),
+    sid: str = Form(..., description="Session ID from frontend"),
+    course_code: str = Form(..., description="Current course code"),
+    _: bool = Depends(verify_api_token),
+):
+    """Upload a PDF, convert + chunk it via the RAG conversion service,
+    embed the chunks, and store them in the session-scoped in-memory cache.
+
+    The uploaded data is **not** written to metadata.db. It lives in memory
+    for the duration of the session and is automatically evicted after the TTL.
+    """
+    import httpx
+    import numpy as np
+    from pathlib import Path as _Path
+
+    from app.config import settings
+    from app.services.query.embedding import _get_embeddings_batch
+    from app.services.query.session_upload_cache import add_upload
+
+    # --- validation -----------------------------------------------------------
+    suffix = _Path(file.filename).suffix.lower()
+    if suffix not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported file type: {suffix}. Allowed: {_ALLOWED_EXTENSIONS}",
+        )
+
+    contents = await file.read()
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large ({len(contents) / 1024 / 1024:.1f} MB). Max: {_MAX_UPLOAD_BYTES / 1024 / 1024:.0f} MB",
+        )
+
+    # --- call RAG conversion service ------------------------------------------
+    convert_url = f"{settings.conversion_service_url}/process"
+    logger.info(f"[upload] Forwarding {file.filename} to {convert_url} (sid={sid})")
+
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
+            resp = await client.post(
+                convert_url,
+                files={"file": (file.filename, contents, file.content_type or "application/octet-stream")},
+                data={"course_code": course_code},
+            )
+        if resp.status_code != 200:
+            detail = resp.text[:500]
+            logger.error(f"[upload] Conversion service error {resp.status_code}: {detail}")
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=f"Conversion service error: {detail}")
+
+        payload = resp.json()
+        chunks = payload.get("chunks", [])
+        file_uuid = payload.get("file_uuid", "")
+        file_name = payload.get("file_name", file.filename)
+    except httpx.ConnectError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversion service is not running. Start it with: make dev-convert-api (in rag/)",
+        )
+
+    if not chunks:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No chunks produced from file")
+
+    # --- embed chunks ---------------------------------------------------------
+    logger.info(f"[upload] Embedding {len(chunks)} chunks for {file_name}")
+    try:
+        embeddings = _get_embeddings_batch(chunks)
+    except Exception as e:
+        logger.exception("[upload] Embedding failed")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"Embedding service error: {e}")
+
+    # --- store in session cache -----------------------------------------------
+    total = add_upload(sid, file_name, file_uuid, chunks, embeddings)
+    logger.info(f"[upload] Stored {len(chunks)} chunks for sid={sid} (total now: {total})")
+
+    return JSONResponse({
+        "sid": sid,
+        "file_name": file_name,
+        "file_uuid": file_uuid,
+        "chunks_count": len(chunks),
+        "total_session_chunks": total,
+        "status": "ready",
+    })
 

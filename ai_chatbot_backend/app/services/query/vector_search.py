@@ -61,6 +61,101 @@ def get_reference_documents(
     return output, class_name
 
 
+def get_references_with_uploads(
+    query: str,
+    course: str,
+    sid: Optional[str],
+    top_k: int,
+    threshold: float = 0.32,
+    timer: Optional["RequestTimer"] = None,
+) -> Tuple[Tuple, str]:
+    """Search course DB **and** session uploads, merge results by score.
+
+    Computes the query embedding once and reuses it for both searches.
+    Falls back to ``get_reference_documents`` when *sid* is None or the
+    session has no uploads.
+    """
+    class_name = _get_pickle_and_class(course)
+
+    if timer:
+        timer.mark("embedding_start")
+    t0 = time.time()
+    qv = _get_embedding(query)
+    if timer:
+        timer.mark("embedding_end")
+    print(f"[INFO] Embedding time: {time.time() - t0:.2f} seconds")
+
+    if timer:
+        timer.mark("retrieval_start")
+    t1 = time.time()
+
+    # Course-level search
+    course_refs = _get_references_from_sql({"dense_vecs": qv}, course, top_k=top_k)
+
+    # Session upload search
+    upload_refs = None
+    if sid:
+        from app.services.query.session_upload_cache import search_uploads
+        upload_refs = search_uploads(sid, qv, top_k=5, threshold=threshold)
+
+    if timer:
+        timer.mark("retrieval_end")
+    print(f"[INFO] Retrieval time: {time.time() - t1:.2f} seconds")
+
+    if upload_refs and any(upload_refs[0]):
+        merged = _merge_refs(course_refs, upload_refs, top_k)
+        return merged, class_name
+
+    return course_refs, class_name
+
+
+def get_two_stage_references_with_uploads(
+    query: str,
+    course: str,
+    sid: Optional[str] = None,
+    top_k_files: int = 7,
+    top_k_chunks_per_file: int = 3,
+    threshold: float = 0.32,
+    timer: Optional["RequestTimer"] = None,
+) -> Tuple[Tuple, str]:
+    """Two-stage retrieval + session upload search, merged by score."""
+    course_refs, class_name = get_two_stage_references(
+        query, course, top_k_files, top_k_chunks_per_file, threshold, timer
+    )
+
+    if sid:
+        from app.services.query.session_upload_cache import search_uploads
+        qv = _get_embedding(query)
+        upload_refs = search_uploads(sid, qv, top_k=5, threshold=threshold)
+        if upload_refs and any(upload_refs[0]):
+            merged = _merge_refs(course_refs, upload_refs, top_k_files * top_k_chunks_per_file)
+            return merged, class_name
+
+    return course_refs, class_name
+
+
+def _merge_refs(
+    refs_a: Tuple, refs_b: Tuple, top_k: int
+) -> Tuple[List[str], List[str], List[str], List[float],
+           List[str], List[str], List[str], List[str], List[int]]:
+    """Merge two 9-tuples of parallel lists by score (index 3), take top_k."""
+    # Each ref tuple: (chunk_uuids, texts, urls, scores,
+    #                   file_paths, ref_paths, titles, file_uuids, chunk_idxs)
+    combined = list(zip(*refs_a)) + list(zip(*refs_b))
+    if not combined:
+        return ([], [], [], [], [], [], [], [], [])
+
+    # Sort by score descending (score is at position 3)
+    combined.sort(key=lambda row: row[3], reverse=True)
+    combined = combined[:top_k]
+
+    # Unzip back into parallel lists
+    if not combined:
+        return ([], [], [], [], [], [], [], [], [])
+    result = tuple(list(col) for col in zip(*combined))
+    return result
+
+
 def get_chunks_by_file_uuid(file_uuid: UUID) -> List[Dict[int, Any]]:
     """
     Get all chunks associated with a specific file UUID.

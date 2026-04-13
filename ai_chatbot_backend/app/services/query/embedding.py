@@ -43,6 +43,40 @@ def _get_embedding(query: str) -> np.ndarray:
     return np.array(response.data[0].embedding, dtype=np.float32)
 
 
+def _get_embeddings_batch(chunks: list[dict]) -> np.ndarray:
+    """Embed document chunks in a single batch call via vLLM.
+
+    Uses the same prompt format as the RAG pipeline
+    (``rag/file_conversion_router/embedding/embedding_create.py``):
+      ``document_hierarchy_path: {path}\\ndocument: {text}\\n``
+
+    This ensures uploaded-chunk embeddings live in the same vector space
+    as course-chunk embeddings so similarity scores are comparable.
+
+    Args:
+        chunks: list of dicts, each with at least ``content`` and
+                optionally ``reference_path`` / ``titles``.
+
+    Returns:
+        numpy float32 array of shape ``[len(chunks), D]``.
+    """
+    if not chunks:
+        return np.empty((0, 0), dtype=np.float32)
+
+    client = _get_embedding_client()
+    formatted = [
+        f"document_hierarchy_path: {c.get('reference_path', '') or c.get('titles', '')}\n"
+        f"document: {c.get('content', '')}\n"
+        for c in chunks
+    ]
+    response = client.embeddings.create(
+        model=settings.vllm_embedding_model,
+        input=formatted,
+    )
+    sorted_data = sorted(response.data, key=lambda x: x.index)
+    return np.array([d.embedding for d in sorted_data], dtype=np.float32)
+
+
 # Dynamic paths based on current file location
 _CURRENT_FILE = Path(__file__).resolve()
 _BACKEND_ROOT = _CURRENT_FILE.parent.parent.parent.parent  # Navigate up to ai_chatbot_backend/

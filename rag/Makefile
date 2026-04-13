@@ -110,6 +110,10 @@ dev-api: ## Start FastAPI development server
 	@echo "🚀 Starting RAG API server..."
 	$(POETRY) run uvicorn file_conversion_router.api:app --reload --port 8001
 
+dev-convert-api: ## Start standalone conversion API service
+	@echo "🚀 Starting conversion API server on port 8010..."
+	$(POETRY) run uvicorn file_conversion_router.conversion_api:app --host 0.0.0.0 --port 8010
+
 test: ## Run all tests (excludes OCR/GPU tests)
 	@echo "🧪 Running all tests..."
 	$(PYTEST) tests -m "not ocr and not gpu"

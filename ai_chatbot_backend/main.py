@@ -37,6 +37,31 @@ else:
 # Fallback table creation (in case the initializer doesn't work)
 Base.metadata.create_all(bind=engine)
 
+import asyncio
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI):
+    """Startup / shutdown hooks for the application."""
+    # --- startup: launch periodic session upload cache cleanup ----------------
+    async def _periodic_session_cleanup():
+        while True:
+            await asyncio.sleep(300)  # every 5 minutes
+            try:
+                from app.services.query.session_upload_cache import cleanup_expired
+                n = cleanup_expired(max_age_seconds=7200)
+                if n:
+                    print(f"[INFO] Cleaned {n} expired upload session(s)")
+            except Exception as exc:
+                print(f"[WARNING] Session cleanup error: {exc}")
+
+    cleanup_task = asyncio.create_task(_periodic_session_cleanup())
+    yield
+    # --- shutdown: cancel background task ------------------------------------
+    cleanup_task.cancel()
+
+
 app = FastAPI(
     title="Course AI Assistant API",
     description="API for interacting with the course AI assistant and file management",
@@ -44,6 +69,7 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware to allow the frontend to access the API

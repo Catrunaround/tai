@@ -1,7 +1,9 @@
 import time
 from typing import Dict, List, Optional, Tuple
 
-from app.services.query.vector_search import get_reference_documents, get_file_descriptions_by_uuids
+from app.services.query.vector_search import (
+    get_reference_documents, get_file_descriptions_by_uuids, get_references_with_uploads,
+)
 from app.services.generation.prompts import modes
 from app.services.request_timer import RequestTimer
 
@@ -18,7 +20,8 @@ def build_augmented_prompt(
         answer_content: Optional[str] = None,
         audio_response: bool = False,
         tutor_mode: bool = True,
-        timer: Optional[RequestTimer] = None
+        timer: Optional[RequestTimer] = None,
+        sid: Optional[str] = None,
 ) -> Tuple[str, List[Dict], str]:
     """
     Build an augmented prompt by retrieving reference documents.
@@ -51,18 +54,33 @@ def build_augmented_prompt(
     # If query_message is not provided, use user_message
     if not query_message:
         query_message = user_message
-    # Retrieve reference documents based on the query
-    (
-        top_chunk_uuids, top_docs, top_urls, similarity_scores, top_files, top_refs, top_titles,
-        top_file_uuids, top_chunk_idxs
-    ), class_name = get_reference_documents(query_message, course, top_k=top_k, timer=timer)
+    # Retrieve reference documents based on the query (includes session uploads when sid is set)
+    if sid:
+        (
+            top_chunk_uuids, top_docs, top_urls, similarity_scores, top_files, top_refs, top_titles,
+            top_file_uuids, top_chunk_idxs
+        ), class_name = get_references_with_uploads(query_message, course, sid=sid, top_k=top_k, threshold=threshold, timer=timer)
+    else:
+        (
+            top_chunk_uuids, top_docs, top_urls, similarity_scores, top_files, top_refs, top_titles,
+            top_file_uuids, top_chunk_idxs
+        ), class_name = get_reference_documents(query_message, course, top_k=top_k, timer=timer)
     # Prepare the insert document and reference list
     # Collect file UUIDs that pass threshold, then batch-fetch their descriptions
     passing_indices = [i for i in range(len(top_docs)) if similarity_scores[i] > threshold]
+
+    # Determine which file_uuids belong to session uploads (not in the DB)
+    uploaded_file_uuids: set = set()
+    if sid:
+        from app.services.query.session_upload_cache import get_session_file_uuids
+        uploaded_file_uuids = get_session_file_uuids(sid)
+
+    # Only fetch DB descriptions for course files (skip uploaded ones)
     file_desc_map = {}
     if passing_indices:
-        uuids_needed = [top_file_uuids[i] for i in passing_indices]
-        file_desc_map = get_file_descriptions_by_uuids(uuids_needed)
+        db_uuids = [top_file_uuids[i] for i in passing_indices if top_file_uuids[i] not in uploaded_file_uuids]
+        if db_uuids:
+            file_desc_map = get_file_descriptions_by_uuids(db_uuids)
 
     insert_document = ""
     reference_list = reference_list or []
@@ -74,18 +92,27 @@ def build_augmented_prompt(
         chunk_index = top_chunk_idxs[i]
         topic_path = top_refs[i]
         url = top_urls[i] if top_urls[i] else ""
-        file_desc = file_desc_map.get(file_uuid, "")
-        insert_document += (
-            f'Reference Number: {n}\n'
-            f"Directory Path to reference file to tell what file is about: {file_path}\n"
-        )
-        if file_desc:
-            insert_document += f"File Description: {file_desc}\n"
+        is_uploaded = file_uuid in uploaded_file_uuids
+        source = "uploaded" if is_uploaded else "course"
+
+        if is_uploaded:
+            insert_document += (
+                f'Reference Number: {n}\n'
+                f"[Student Uploaded File] File Name: {file_path}\n"
+            )
+        else:
+            file_desc = file_desc_map.get(file_uuid, "")
+            insert_document += (
+                f'Reference Number: {n}\n'
+                f"Directory Path to reference file to tell what file is about: {file_path}\n"
+            )
+            if file_desc:
+                insert_document += f"File Description: {file_desc}\n"
         insert_document += (
             f"Topic Path of chunk in file to tell the topic of chunk: {topic_path}\n"
             f'Document: {top_docs[i]}\n\n'
         )
-        reference_list.append([topic_path, url, file_path, file_uuid, chunk_index])
+        reference_list.append([topic_path, url, file_path, file_uuid, chunk_index, source])
 
     # Get mode configuration - single source of truth
     config = modes.get_mode_config(tutor_mode, audio_response)

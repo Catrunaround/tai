@@ -110,7 +110,8 @@ async def build_chat_context(
         query_message=query_message,
         audio_response=audio_response,
         tutor_mode=False,
-        timer=timer
+        timer=timer,
+        sid=sid,
     )
 
     messages[-1].content += modified_message

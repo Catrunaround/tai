@@ -131,6 +131,13 @@ class Settings(BaseSettings):
 
     dev_mode: bool = Field(default=False, description="Development mode flag")
 
+    # Conversion service (RAG standalone API for file → markdown/chunks)
+    conversion_service_url: str = Field(
+        default="http://localhost:8010",
+        description="URL of the standalone RAG conversion API service",
+        alias="CONVERSION_SERVICE_URL"
+    )
+
     # Data directory settings
     DATA_DIR: str = Field(description="Directory path for file storage")
 

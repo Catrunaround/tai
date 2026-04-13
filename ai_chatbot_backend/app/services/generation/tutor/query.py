@@ -7,7 +7,7 @@ from app.services.generation.message_format import format_chat_msg
 from app.services.query.reformulation import build_retrieval_query
 from app.services.query.prompt_assembly import build_augmented_prompt, build_prompt_from_refs
 from app.services.query.file_context import build_file_augmented_context
-from app.services.query.vector_search import get_relevant_file_descriptions, get_two_stage_references
+from app.services.query.vector_search import get_relevant_file_descriptions, get_two_stage_references_with_uploads
 from app.services.request_timer import RequestTimer
 
 
@@ -102,10 +102,11 @@ async def build_tutor_context(
 
     print(f"[INFO] Preprocessing time: {time.time() - t0:.2f} seconds")
 
-    # 5. Two-stage retrieval + outline prompt assembly
-    refs, class_name = get_two_stage_references(
+    # 5. Two-stage retrieval + outline prompt assembly (includes session uploads)
+    refs, class_name = get_two_stage_references_with_uploads(
         query_message,
         course if course else "",
+        sid=sid,
         top_k_files=7,
         top_k_chunks_per_file=3,
         threshold=0.32,
