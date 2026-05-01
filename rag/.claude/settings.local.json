@@ -32,7 +32,9 @@
       "Bash(ls /home/bot/bot/yk/YK_final/tai/rag/requirements*.txt)",
       "Bash(ls /home/bot/bot/yk/YK_final/tai/yk_env2_backup*.txt)",
       "Bash(ls /home/bot/bot/yk/YK_final/tai/rag/yk_env2*.txt)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(env)",
+      "Bash(poetry *)"
     ],
     "deny": [],
     "ask": []
