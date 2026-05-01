@@ -279,6 +279,35 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
                 '"not_readable" for visual-only content (code, formulas, tables).'
             )
         },
+        "layout": {
+            "type": "string",
+            "enum": ["default", "centered", "highlight-box", "definition", "comparison", "steps"],
+            "description": (
+                "Visual layout hint for this block. "
+                '"default": standard text block. '
+                '"centered": key definition or takeaway, displayed prominently. '
+                '"highlight-box": important callout with colored background. '
+                '"definition": term + definition card layout. '
+                '"comparison": side-by-side comparison content. '
+                '"steps": part of a step-by-step sequence.'
+            )
+        },
+        "visual_emphasis": {
+            "type": "string",
+            "enum": ["primary", "secondary", "accent"],
+            "description": (
+                "Visual emphasis level. "
+                '"primary": main point. "secondary": supporting detail. "accent": attention-grabbing.'
+            )
+        },
+        "icon_hint": {
+            "type": ["string", "null"],
+            "enum": ["lightbulb", "warning", "code", "formula", "check", "question", None],
+            "description": (
+                "Optional semantic icon to display alongside this block. "
+                "null if no icon is appropriate."
+            )
+        },
         "citations": {
             "type": "array",
             "items": CITATION_SCHEMA,
@@ -300,7 +329,7 @@ PAGE_CONTENT_TTS_BLOCK_SCHEMA = {
             "description": "true to close the reference file after this block. false to keep it open."
         },
     },
-    "required": ["type", "citations", "open", "markdown_content", "close"],
+    "required": ["type", "layout", "visual_emphasis", "icon_hint", "citations", "open", "markdown_content", "close"],
     "additionalProperties": False
 }
 

@@ -25,20 +25,22 @@ Your job is to create an outline that answers the student's question using the p
 
 Work in three steps:
 
-Step 1 — Think about what kind of response would best serve this student
-Read the student's question and consider what experience would be most helpful.
+Step 1 — Decide how many pages this answer actually needs
+Each page should teach one core concept that requires its own explanation and build-up. \
+Use this to judge:
 
-Some questions are simple — the student just wants a quick clarification, a definition,
-or a short explanation. For these, a long structured lesson would feel heavy and
-unnecessary. A single focused page that gets straight to the point respects the
-student's time and keeps the interaction light.
+- A page earns its place when understanding it is a genuine prerequisite for the next \
+page — if the student could not follow page 3 without first working through page 2, \
+those are separate pages.
+- If two ideas can be explained naturally in the same breath — they belong on the same \
+page. Splitting them would just create an unnecessary click.
+- A definition, a clarification, or a focused "how does X work?" question is almost \
+always a single page. The student asked a pointed question; give a pointed answer.
+- A question that asks the student to understand a process with multiple dependent \
+stages, or to compare ideas that each need setup, genuinely benefits from more pages.
 
-Other questions are more involved — the student is trying to understand a concept,
-a process, or how ideas connect. These benefit from a structured teaching plan that
-builds understanding step by step, with each page adding a meaningful layer.
-
-Think about what the student is really asking for and what response would feel
-natural and helpful — then let that guide how many pages you create.
+Err on the side of fewer pages. A concise two-page explanation that flows well teaches \
+better than a drawn-out five-page walkthrough that dilutes each point.
 
 Step 2 — Analyze the references
 Review each reference document by Directory Path, Topic Path, and chunk content.
@@ -49,9 +51,11 @@ Do not broaden the outline merely because the references contain adjacent topics
 Step 3 — Design the outline
 Create an ordered flat list of pages that teaches the topic in a logical sequence.
 Start from the foundational idea that makes the rest easiest to understand.
-If the question is straightforward, a single page is enough — do not pad the outline.
-If the question genuinely requires structured explanation, use as many pages as needed,
-but the outline should answer the student's question, not summarize the entire unit.
+Before adding a page, ask: "Does this idea truly need its own dedicated explanation, \
+or can it be folded into an adjacent page without losing clarity?" Only give an idea \
+its own page when merging it would make the explanation confusing or rushed.
+The outline should answer the student's question — not survey the entire unit or \
+cover adjacent topics just because references mention them.
 </task>
 
 <outline_rules>
@@ -109,27 +113,30 @@ your general knowledge.
 
 Work in two steps:
 
-Step 1 — Think about what kind of response would best serve this student
-Read the student's question and consider what experience would be most helpful.
+Step 1 — Decide how many pages this answer actually needs
+Each page should teach one core concept that requires its own explanation and build-up. \
+Use this to judge:
 
-Some questions are simple — the student just wants a quick clarification, a definition,
-or a short explanation. For these, a long structured lesson would feel heavy and
-unnecessary. A single focused page that gets straight to the point respects the
-student's time and keeps the interaction light.
+- A page earns its place when understanding it is a genuine prerequisite for the next \
+page — if the student could not follow page 3 without first working through page 2, \
+those are separate pages.
+- If two ideas can be explained naturally in the same breath — they belong on the same \
+page. Splitting them would just create an unnecessary click.
+- A definition, a clarification, or a focused "how does X work?" question is almost \
+always a single page. The student asked a pointed question; give a pointed answer.
+- A question that asks the student to understand a process with multiple dependent \
+stages, or to compare ideas that each need setup, genuinely benefits from more pages.
 
-Other questions are more involved — the student is trying to understand a concept,
-a process, or how ideas connect. These benefit from a structured teaching plan that
-builds understanding step by step, with each page adding a meaningful layer.
-
-Think about what the student is really asking for and what response would feel
-natural and helpful — then let that guide how many pages you create.
+Err on the side of fewer pages. A concise two-page explanation that flows well teaches \
+better than a drawn-out five-page walkthrough that dilutes each point.
 
 Step 2 — Design the outline
 Create an ordered flat list of pages that teaches the topic in a logical sequence.
 Start from the foundational idea that makes the rest easiest to understand.
-If the question is straightforward, a single page is enough — do not pad the outline.
-If the question genuinely requires structured explanation, use as many pages as needed,
-but the outline should answer the student's question, not summarize the entire unit.
+Before adding a page, ask: "Does this idea truly need its own dedicated explanation, \
+or can it be folded into an adjacent page without losing clarity?" Only give an idea \
+its own page when merging it would make the explanation confusing or rushed.
+The outline should answer the student's question — not survey the entire unit.
 </task>
 
 <outline_rules>

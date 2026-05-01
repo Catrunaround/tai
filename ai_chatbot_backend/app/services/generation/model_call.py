@@ -12,7 +12,7 @@ from app.core.models.chat_completion import Message
 SAMPLING_PARAMS = {
     "temperature": 0.6,
     "top_p": 0.95,
-    "max_tokens": 2000,
+    "max_tokens": 4096,
     "extra_body": {
         "top_k": 20,
         "min_p": 0,
@@ -90,6 +90,7 @@ async def call_remote_engine(
     stream: bool = True,
     course: Optional[str] = None,
     response_format: Optional[Any] = None,
+    max_tokens: Optional[int] = None,
 ):
     """
     Shared remote engine call logic for non-OpenAI engines.
@@ -116,5 +117,5 @@ async def call_remote_engine(
         course=course,
         response_format=response_format,
         temperature=SAMPLING_PARAMS["temperature"],
-        max_tokens=SAMPLING_PARAMS["max_tokens"],
+        max_tokens=max_tokens or SAMPLING_PARAMS["max_tokens"],
     )

@@ -50,6 +50,29 @@ async def call_page_content_openai(
     )
 
 
+async def call_page_content_html(
+    messages: List[Message],
+    engine: Any,
+    course: Optional[str] = None,
+    max_tokens: int = 8192,
+):
+    """
+    Call OpenAI for HTML fragment or interactive HTML generation.
+
+    No response_format — model outputs raw HTML using preset CSS classes.
+    Higher max_tokens than default because interactive mode generates
+    complete HTML+CSS+JS documents.
+    Returns a streaming iterator of chunks.
+    """
+    return await call_remote_engine(
+        messages,
+        engine,
+        stream=True,
+        course=course,
+        max_tokens=max_tokens,
+    )
+
+
 async def call_page_content_local(
     messages: List[Message],
     engine: Any,

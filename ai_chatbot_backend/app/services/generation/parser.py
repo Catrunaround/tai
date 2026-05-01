@@ -335,6 +335,10 @@ class BlockStreamEvent:
     citation_close: Optional[int] = None  # citation_id that just ended
     text_delta: Optional[str] = None
     block_type: Optional[str] = None  # "readable" or "not_readable" (emitted once per new block)
+    # Visual layout hints (emitted alongside block_type when a new block opens)
+    layout: Optional[str] = None
+    visual_emphasis: Optional[str] = None
+    icon_hint: Optional[str] = None
 
 
 @dataclass
@@ -457,10 +461,19 @@ def extract_answers_with_citations(
             citation_info = _extract_citation_from_region(region_before)
             prev_close, curr_open = _extract_open_close_from_region(region_before)
 
-            # Emit block type if present (TTS-aware blocks)
+            # Emit block type + visual hints if present (TTS-aware blocks)
             type_match = re.search(r'"type"\s*:\s*"(readable|not_readable)"', region_before)
             if type_match:
-                events.append(BlockStreamEvent(block_type=type_match.group(1)))
+                # Extract visual layout hints from the same region
+                layout_match = re.search(r'"layout"\s*:\s*"([^"]*)"', region_before)
+                emphasis_match = re.search(r'"visual_emphasis"\s*:\s*"([^"]*)"', region_before)
+                icon_match = re.search(r'"icon_hint"\s*:\s*(?:"([^"]*)"|null)', region_before)
+                events.append(BlockStreamEvent(
+                    block_type=type_match.group(1),
+                    layout=layout_match.group(1) if layout_match else None,
+                    visual_emphasis=emphasis_match.group(1) if emphasis_match else None,
+                    icon_hint=icon_match.group(1) if icon_match and icon_match.group(1) else None,
+                ))
 
             # Previous block had close=true → close active citation
             if state.active_citation_id is not None and (prev_close or state.pending_close):
@@ -516,10 +529,15 @@ def _process_complete_blocks(
             # Flush text accumulated so far (belongs to the previous citation)
             _flush_text_delta(all_content_parts, state, events)
 
-            # Emit block type if present (TTS-aware blocks)
+            # Emit block type + visual hints if present (TTS-aware blocks)
             block_type_val = block.get("type")
             if isinstance(block_type_val, str) and block_type_val in ("readable", "not_readable"):
-                events.append(BlockStreamEvent(block_type=block_type_val))
+                events.append(BlockStreamEvent(
+                    block_type=block_type_val,
+                    layout=block.get("layout") if isinstance(block.get("layout"), str) else None,
+                    visual_emphasis=block.get("visual_emphasis") if isinstance(block.get("visual_emphasis"), str) else None,
+                    icon_hint=block.get("icon_hint") if isinstance(block.get("icon_hint"), str) else None,
+                ))
 
             # Read open/close from block level
             block_open = bool(block.get("open", False))
