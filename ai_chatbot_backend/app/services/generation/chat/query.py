@@ -28,6 +28,7 @@ async def build_chat_context(
     sid: Optional[str],
     timer: Optional[RequestTimer],
     audio_response: bool = False,
+    module_path: Optional[str] = None,
 ) -> ChatContext:
     """
     Step 1: Build the complete prompt context for regular (non-tutor) chat mode.
@@ -112,6 +113,7 @@ async def build_chat_context(
         tutor_mode=False,
         timer=timer,
         sid=sid,
+        module_path=module_path,
     )
 
     messages[-1].content += modified_message
