@@ -498,6 +498,7 @@ def batch_convert_files(
     input_root: Optional[Union[str, Path]] = None,
     auto_embed: bool = True,
     progress_callback: Optional[callable] = None,
+    skip_cache: bool = False,
 ) -> Dict[str, Any]:
     """
     Convert multiple files with progress tracking.
@@ -516,9 +517,12 @@ def batch_convert_files(
                    If None, uses each file's parent directory.
         auto_embed: Whether to generate embeddings after conversion (default: True)
         progress_callback: Optional callback function called for each file:
-                          callback(file_name: str, status: str, error: Optional[str])
+                          callback(file_name: str, status: str, error: Optional[str], extra: Optional[Dict[str, Any]])
                           - status: "started", "completed", "failed", "skipped"
                           - error: Error message if status is "failed"
+                          - extra: Dict with optional fields (e.g., {"transcript_path": str}
+                                   for video files). May be omitted by older callbacks
+                                   that only accept 3 positional args.
 
     Returns:
         Dictionary containing:
@@ -554,6 +558,18 @@ def batch_convert_files(
     db_path = Path(db_path)
     input_root = Path(input_root) if input_root else None
 
+    # File extensions that produce a timestamped transcript JSON sidecar
+    video_extensions = {".mp4", ".mkv", ".webm", ".mov"}
+
+    def _emit_progress(file_name, status, error, extra=None):
+        if not progress_callback:
+            return
+        try:
+            progress_callback(file_name, status, error, extra)
+        except TypeError:
+            # Backwards compatibility for callbacks that only accept 3 args
+            progress_callback(file_name, status, error)
+
     # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -578,8 +594,7 @@ def batch_convert_files(
             file_name = file_path.name
 
             # Notify progress: started
-            if progress_callback:
-                progress_callback(file_name, "started", None)
+            _emit_progress(file_name, "started", None)
 
             # Validate file exists
             if not file_path.exists():
@@ -594,8 +609,7 @@ def batch_convert_files(
                     "status": "failed",
                     "error": error_msg,
                 })
-                if progress_callback:
-                    progress_callback(file_name, "failed", error_msg)
+                _emit_progress(file_name, "failed", error_msg)
                 continue
 
             # Validate file extension
@@ -611,8 +625,7 @@ def batch_convert_files(
                     "status": "failed",
                     "error": error_msg,
                 })
-                if progress_callback:
-                    progress_callback(file_name, "failed", error_msg)
+                _emit_progress(file_name, "failed", error_msg)
                 continue
 
             # Process the file
@@ -626,31 +639,115 @@ def batch_convert_files(
                     course_code=course_code,
                     conn=conn,
                     input_root=file_input_root,
+                    skip_cache=skip_cache,
                 )
+
+                # Compute transcript JSON sidecar path for video files. The
+                # converter writes it next to the markdown at:
+                #   <output_dir>/<file_stem>/<file_full_name>.json
+                # (see services.directory_service.process_single_file).
+                transcript_path = None
+                if file_path.suffix.lower() in video_extensions:
+                    candidate = output_dir / file_path.stem / f"{file_path.name}.json"
+                    if candidate.exists():
+                        transcript_path = str(candidate)
+
+                # Locate the produced markdown. Different converters write to
+                # different layouts: video/most converters write to
+                #   <output_dir>/<file_stem>/<file_name>.md
+                # while the PDF converter writes flat:
+                #   <output_dir>/<file_name>.md
+                markdown_path = None
+                for candidate in (
+                    output_dir / file_path.stem / f"{file_path.name}.md",
+                    output_dir / f"{file_path.name}.md",
+                ):
+                    if candidate.exists():
+                        markdown_path = str(candidate)
+                        break
+
+                # Locate the per-line bbox JSON for PDF inputs. The directory
+                # service derives `<file_name>_lines.json` from MinerU's
+                # `_middle.json` next to the markdown.
+                bbox_path = None
+                if file_path.suffix.lower() == ".pdf":
+                    for candidate in (
+                        output_dir / file_path.stem / f"{file_path.name}_lines.json",
+                        output_dir / f"{file_path.name}_lines.json",
+                    ):
+                        if candidate.exists():
+                            bbox_path = str(candidate)
+                            break
+
+                # Locate the per-scene snapshot index JSON + images dir for
+                # video inputs. VideoConverter writes both into
+                # `<output_dir>/<stem>/<stem>_images/{scenes.json,*.jpg}`.
+                scenes_path = None
+                scenes_dir = None
+                if file_path.suffix.lower() in video_extensions:
+                    images_dir = output_dir / file_path.stem / f"{file_path.stem}_images"
+                    scenes_json = images_dir / "scenes.json"
+                    if scenes_json.exists():
+                        scenes_path = str(scenes_json)
+                        scenes_dir = str(images_dir)
+
+                def _build_extra():
+                    extra = {}
+                    if transcript_path:
+                        extra["transcript_path"] = transcript_path
+                    if markdown_path:
+                        extra["markdown_path"] = markdown_path
+                    if bbox_path:
+                        extra["bbox_path"] = bbox_path
+                    if scenes_path:
+                        extra["scenes_path"] = scenes_path
+                    if scenes_dir:
+                        extra["scenes_dir"] = scenes_dir
+                    return extra or None
 
                 # Check if it was a cache hit
                 if isinstance(metadata, dict) and metadata.get("cache_hit"):
                     stats["files_skipped"] += 1
-                    stats["results"].append({
+                    result_entry = {
                         "file_name": file_name,
                         "file_uuid": file_uuid,
                         "chunks_count": 0,
                         "status": "skipped",
-                    })
-                    if progress_callback:
-                        progress_callback(file_name, "skipped", None)
+                    }
+                    if transcript_path:
+                        result_entry["transcript_path"] = transcript_path
+                    if markdown_path:
+                        result_entry["markdown_path"] = markdown_path
+                    if bbox_path:
+                        result_entry["bbox_path"] = bbox_path
+                    if scenes_path:
+                        result_entry["scenes_path"] = scenes_path
+                    if scenes_dir:
+                        result_entry["scenes_dir"] = scenes_dir
+                    stats["results"].append(result_entry)
+                    _emit_progress(file_name, "skipped", None, _build_extra())
                 else:
                     chunks_count = len(chunks) if chunks else 0
                     stats["files_processed"] += 1
                     stats["total_chunks"] += chunks_count
-                    stats["results"].append({
+                    result_entry = {
                         "file_name": file_name,
                         "file_uuid": file_uuid,
                         "chunks_count": chunks_count,
                         "status": "completed",
-                    })
-                    if progress_callback:
-                        progress_callback(file_name, "completed", None)
+                    }
+                    if transcript_path:
+                        result_entry["transcript_path"] = transcript_path
+                    if markdown_path:
+                        result_entry["markdown_path"] = markdown_path
+                    if bbox_path:
+                        result_entry["bbox_path"] = bbox_path
+                    if scenes_path:
+                        result_entry["scenes_path"] = scenes_path
+                    if scenes_dir:
+                        result_entry["scenes_dir"] = scenes_dir
+                    stats["results"].append(result_entry)
+                    _emit_progress(file_name, "completed", None, _build_extra())
 
             except Exception as e:
                 error_msg = f"{type(e).__name__}: {str(e)[:200]}"
@@ -664,8 +761,7 @@ def batch_convert_files(
                     "status": "failed",
                     "error": error_msg,
                 })
-                if progress_callback:
-                    progress_callback(file_name, "failed", error_msg)
+                _emit_progress(file_name, "failed", error_msg)
                 continue
 
         # Generate embeddings if requested and files were processed

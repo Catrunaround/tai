@@ -618,10 +618,17 @@ class BaseConverter(ABC):
                 self.index_helper.append({title: i + 1})
 
     def add_source_section_index(self, content_dict: dict, md_content: str = None) -> dict:
-        if self.file_type not in ["mp4", "mkv", "webm", "mov"]:
+        is_video = self.file_type in ["mp4", "mkv", "webm", "mov"]
+        if not is_video:
             self.update_index_helper(content_dict, md_content=md_content)
-        # If there are key concepts, update their source_section_title and source_section_index
+        # If there are key concepts, update their source_section_title and source_section_index.
+        # For PDF / ipynb the schema enum already constrains source_section_title to the
+        # known title list, so a mismatch is a real bug worth retrying. The video no-title
+        # schema cannot enum-constrain (titles are emitted in the same call), so the LLM
+        # occasionally hallucinates a body sentence as a section title — in that case we
+        # drop the offending concept with a warning instead of triggering a useless retry.
         if 'key_concepts' in content_dict:
+            valid_concepts = []
             for concept in content_dict['key_concepts']:
                 source_title = concept['source_section_title']
                 found = False
@@ -632,10 +639,19 @@ class BaseConverter(ABC):
                         concept['source_section_index'] = self.index_helper[titles][0] # page index
                         found = True
                         break
-                if not found:
+                if found:
+                    valid_concepts.append(concept)
+                elif is_video:
+                    logging.warning(
+                        f"Dropping key_concept '{concept.get('concept', '?')}' for {self.file_name}: "
+                        f"hallucinated source_section_title '{source_title}' is not in "
+                        f"index_helper={list(self.index_helper.keys())}"
+                    )
+                else:
                     raise ValueError(
                         f"Source section title '{source_title}' not found in index_helper: {self.index_helper}"
                     )
+            content_dict['key_concepts'] = valid_concepts
         return content_dict
 
     def update_index_helper(self, content_dict, md_content=None):

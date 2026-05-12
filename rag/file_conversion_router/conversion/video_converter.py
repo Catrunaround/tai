@@ -152,6 +152,11 @@ class VideoConverter(BaseConverter):
         return "\n\n".join(markdown_lines)
 
     def process_video_scenes(self, video_path, output_path):
+        # Stash the directory holding per-scene snapshots so callers (and the
+        # web API) can serve them without re-running scene detection.
+        self.scenes_dir = None
+        self.scenes_index_path = None
+
         def setup_scene_detection(video_path, custom_window_width=50, custom_weights=None):
             video = open_video(video_path)
             scene_manager = SceneManager()
@@ -221,6 +226,33 @@ class VideoConverter(BaseConverter):
 
             # Convert scene times to seconds for return value
             scene_times = [(start_time.get_seconds(), end_time.get_seconds()) for start_time, end_time in scene_list]
+
+            # Build a scenes index sidecar so the web API can return per-scene
+            # snapshot metadata without re-parsing the CSV. `image_filenames`
+            # is a Dict[int, List[str]] keyed by scene index (0-based) with
+            # basenames of the saved JPEGs.
+            scenes_index = []
+            for scene_idx, (start_s, end_s) in enumerate(scene_times):
+                images_for_scene = []
+                if isinstance(image_filenames, dict):
+                    images_for_scene = image_filenames.get(scene_idx, []) or []
+                # `num_images=1` above means one snapshot per scene; surface the
+                # primary image, but include the full list in case it grows.
+                primary = images_for_scene[0] if images_for_scene else None
+                scenes_index.append({
+                    "scene_index": scene_idx + 1,  # 1-based for callers
+                    "start_time": start_s,
+                    "end_time": end_s,
+                    "image": primary,
+                    "images": images_for_scene,
+                })
+
+            scenes_json_path = os.path.join(images_output_dir, "scenes.json")
+            with open(scenes_json_path, "w", encoding="utf-8") as f:
+                json.dump(scenes_index, f, indent=2)
+
+            self.scenes_dir = images_output_dir
+            self.scenes_index_path = scenes_json_path
 
             return scene_times
 

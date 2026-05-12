@@ -16,5 +16,5 @@ export OTEL_METRICS_EXPORTER=none
 export OTEL_TRACES_EXPORTER=none
 export OTEL_LOGS_EXPORTER=none
 
-exec poetry run uvicorn file_conversion_router.conversion_api:app \
+exec poetry run uvicorn file_conversion_router.web.app:app \
     --host "$HOST" --port "$PORT"

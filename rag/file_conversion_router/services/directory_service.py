@@ -60,6 +60,7 @@ def process_single_file(
         conn: sqlite3.Connection,
         input_root: Union[str, Path] = None,
         file_uuid: str = None,
+        skip_cache: bool = False,
 ) -> Tuple[List[Chunk], dict, str]:
     """
     Process a single file through the conversion pipeline.
@@ -97,23 +98,26 @@ def process_single_file(
     if input_file_path.suffix not in converter_mapping:
         raise ValueError(f"Unsupported file type: {input_file_path.suffix}. Supported: {list(converter_mapping.keys())}")
 
-    # Calculate file hash for caching
+    # Calculate file hash for caching / deterministic uuid
     fhash = file_hash_for_cache(input_file_path)
 
-    # Check if file already exists in database (cache hit)
-    file_record = get_file_record_by_hash(conn, fhash)
-    if file_record:
-        file_uuid_cached = file_record["uuid"]
-        current_relative_path = str(input_file_path.relative_to(input_root))
+    # Check if file already exists in database (cache hit). Web API callers
+    # set skip_cache=True so each upload always reconverts and produces fresh
+    # markdown / sidecar JSON, regardless of prior runs in the same DB.
+    if not skip_cache:
+        file_record = get_file_record_by_hash(conn, fhash)
+        if file_record:
+            file_uuid_cached = file_record["uuid"]
+            current_relative_path = str(input_file_path.relative_to(input_root))
 
-        # Update file path if it has changed and old file no longer exists
-        path_updated = update_file_path_if_changed(conn, file_uuid_cached, current_relative_path, input_root)
-        if path_updated:
-            conn.commit()
+            # Update file path if it has changed and old file no longer exists
+            path_updated = update_file_path_if_changed(conn, file_uuid_cached, current_relative_path, input_root)
+            if path_updated:
+                conn.commit()
 
-        logging.info(f"[SKIP cache-hit] {input_file_path} already ingested as file_uuid={file_uuid_cached}")
-        # Return empty results for cache hit - file already processed
-        return [], {"cache_hit": True, "file_uuid": file_uuid_cached}, file_uuid_cached
+            logging.info(f"[SKIP cache-hit] {input_file_path} already ingested as file_uuid={file_uuid_cached}")
+            # Return empty results for cache hit - file already processed
+            return [], {"cache_hit": True, "file_uuid": file_uuid_cached}, file_uuid_cached
 
     # Create output subdirectory
     output_subdir = output_dir / input_file_path.relative_to(input_root).parent if input_file_path.is_relative_to(input_root) else output_dir
