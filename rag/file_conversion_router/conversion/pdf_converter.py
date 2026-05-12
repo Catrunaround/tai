@@ -1,7 +1,11 @@
 from file_conversion_router.conversion.base_converter import BaseConverter
 from pathlib import Path
+import base64
 import json
+import os
 import re
+
+from loguru import logger
 
 
 class PdfConverter(BaseConverter):
@@ -10,28 +14,77 @@ class PdfConverter(BaseConverter):
         self.available_tools = ["MinerU"]
         self.index_helper = None
         self.file_name = ""
+        self.use_remote_vlm_descriptions = True
 
+    def describe_image_with_vlm(self, image_path: Path) -> str:
+        """Call OpenAI VLM to get a text description of an image."""
+        try:
+            from openai import OpenAI
+            client = OpenAI()
+            with open(image_path, "rb") as f:
+                image_data = base64.b64encode(f.read()).decode("utf-8")
+            ext = image_path.suffix.lstrip(".").lower()
+            mime = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{image_data}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Describe this image from an educational document. "
+                                "Focus on any code, diagrams, tables, formulas, or key visual content. "
+                                "Be concise but complete."
+                            ),
+                        },
+                    ],
+                }],
+                max_tokens=500,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning(f"VLM description failed for {image_path}: {e}")
+            return ""
 
-    def remove_image_links(self, text):
-        """
-        Remove image links from the text.
-        """
-        # Regular expression to match image links
-        image_link_pattern = r"!\[.*?\]\(.*?\)"
-        # Remove all image links
-        return re.sub(image_link_pattern, "", text)
+    def replace_images_with_vlm_descriptions(self, content: str, images_dir: Path) -> str:
+        """Replace markdown image links with VLM-generated text descriptions."""
+        pattern = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
-    def clean_markdown_content(self, markdown_path):
+        def replace_match(m):
+            img_filename = Path(m.group(2)).name
+            img_path = images_dir / img_filename
+            if img_path.exists():
+                desc = self.describe_image_with_vlm(img_path)
+                if desc:
+                    return f"\n\n**[Image]** {desc}\n\n"
+            return ""
+
+        return pattern.sub(replace_match, content)
+
+    def clean_markdown_content(self, markdown_path, images_dir: Path = None):
         with open(markdown_path, "r", encoding="utf-8") as file:
             content = file.read()
-        # Remove image links (assuming this method exists)
-        cleaned_content = self.remove_image_links(content)
-        # Remove lines that contain only hash symbols and spaces
-        # This pattern matches lines with only #, spaces, and optionally newlines
-        cleaned_content = re.sub(r'^[ #]+$', '-------------', cleaned_content, flags=re.MULTILINE)
+
+        if (
+            getattr(self, "use_remote_vlm_descriptions", True)
+            and images_dir is not None
+            and images_dir.exists()
+            and os.getenv("OPENAI_API_KEY")
+        ):
+            content = self.replace_images_with_vlm_descriptions(content, images_dir)
+        else:
+            content = re.sub(r"!\[.*?\]\(.*?\)", "", content)
+
+        content = re.sub(r'^[ #]+$', '-------------', content, flags=re.MULTILINE)
+
         with open(markdown_path, "w", encoding="utf-8") as file:
-            file.write(cleaned_content)
-        return cleaned_content
+            file.write(content)
+        return content
 
     # Override
     def _to_markdown(
@@ -48,9 +101,11 @@ class PdfConverter(BaseConverter):
                 print(f"Markdown file found: {md_file_path}")
             else:
                 raise FileNotFoundError(f"Markdown file not found: {md_file_path}")
-            # Set the target to this markdown path
+
             target = md_file_path
-            cleaned_content = self.clean_markdown_content(target)
+            # images_dir: e.g. output_dir/lecture.pdf_images/
+            images_dir = output_dir / f"{md_file_path.stem}_images"
+            cleaned_content = self.clean_markdown_content(target, images_dir)
             json_file_path = md_file_path.with_name(f"{md_file_path.stem}_content_list.json")
             with open(json_file_path, "r", encoding="utf-8") as f_json:
                 data = json.load(f_json)

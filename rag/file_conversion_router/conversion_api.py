@@ -1,8 +1,10 @@
-"""Standalone FastAPI conversion service.
+"""Standalone FastAPI conversion and ingest service.
 
 Exposes endpoints:
-  POST /convert   — file → markdown (auto-detects file type)
-  POST /process   — file → markdown → chunks → store in DB
+  POST /convert           — pure file → markdown + sidecars, no DB/chunks/embedding
+  POST /convert/archive   — pure file → downloadable artifact archive
+  POST /ingest            — file → markdown → chunks → store in DB
+  POST /process           — legacy alias for /ingest
   GET  /files     — list stored files
   GET  /files/{uuid}         — get file metadata + chunks
   DELETE /files/{uuid}       — remove a file and its chunks
@@ -12,18 +14,22 @@ Run with:
 """
 
 import asyncio
+import base64
 import hashlib
 import json
 import logging
+import mimetypes
 import os
 import shutil
 import sqlite3
 import tempfile
 import uuid
+import zipfile
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 
 from file_conversion_router.conversion.pdf_converter import PdfConverter
 from file_conversion_router.conversion.md_converter import MarkdownConverter
@@ -38,6 +44,7 @@ from file_conversion_router.classes.new_page import Page
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="TAI Conversion Service", version="1.0.0")
+convert_router = APIRouter(tags=["convert"])
 
 # ---------------------------------------------------------------------------
 # Extension → Converter mapping
@@ -58,6 +65,8 @@ CONVERTER_MAP = {
 
 # Extensions that need GPU (MinerU for PDF, WhisperX for video)
 GPU_EXTENSIONS = {".pdf", ".mp4", ".mkv", ".webm", ".mov"}
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov"}
+PDF_EXTENSIONS = {".pdf"}
 
 # Only one GPU-heavy job at a time (single 4090, ~24 GB VRAM)
 _gpu_lock = asyncio.Semaphore(1)
@@ -156,6 +165,173 @@ def _save_upload(upload: UploadFile, dest_dir: Path) -> tuple[Path, bytes]:
     return file_path, content
 
 
+def _json_attachment(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        content = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        content = path.read_text(encoding="utf-8")
+    return {
+        "file_name": path.name,
+        "content_type": "application/json",
+        "content": content,
+    }
+
+
+def _binary_attachment(path: Path, include_content: bool = False) -> dict:
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    item = {
+        "file_name": path.name,
+        "content_type": content_type,
+        "size_bytes": path.stat().st_size,
+    }
+    if include_content:
+        item["content_base64"] = base64.b64encode(path.read_bytes()).decode("ascii")
+    return item
+
+
+def _iter_image_files(directory: Path):
+    if not directory.exists() or not directory.is_dir():
+        return
+    for path in sorted(directory.iterdir()):
+        if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
+            yield path
+
+
+def _write_video_paragraphs_sidecar(
+    converter,
+    input_path: Path,
+    base_dir: Path,
+    scenes_path: Path | None,
+) -> Path | None:
+    paragraphs = getattr(converter, "paragraphs", None)
+    if not paragraphs:
+        return None
+
+    scenes = []
+    if scenes_path and scenes_path.exists():
+        try:
+            scenes = json.loads(scenes_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            scenes = []
+
+    def matching_scene(start_time: float) -> dict:
+        for scene in scenes:
+            try:
+                if abs(float(scene.get("start_time", -1)) - float(start_time)) < 0.01:
+                    return scene
+            except (TypeError, ValueError):
+                continue
+        return {}
+
+    payload = []
+    for idx, paragraph in enumerate(paragraphs, start=1):
+        start_time = paragraph.get("start_time", 0)
+        scene = matching_scene(start_time)
+        payload.append({
+            "paragraph_index": idx,
+            "start_time": start_time,
+            "utterances": paragraph.get("utterances", []),
+            "snapshot": scene.get("image"),
+            "snapshots": scene.get("images", []),
+        })
+
+    paragraphs_path = base_dir / f"{input_path.name}_paragraphs.json"
+    paragraphs_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return paragraphs_path
+
+
+def _collect_pure_conversion_artifacts(
+    input_path: Path,
+    md_path: Path,
+    converter,
+    include_binary_attachments: bool = False,
+) -> tuple[dict, list[Path], Path]:
+    """Collect markdown sidecars without chunking, embedding, or touching a DB."""
+    base_dir = md_path.parent
+    suffix = input_path.suffix.lower()
+    archive_paths = [md_path]
+    attachments: dict[str, object] = {}
+
+    def add_json(key: str, path: Path | None):
+        if not path:
+            return
+        attachment = _json_attachment(path)
+        if attachment is None:
+            return
+        attachments[key] = attachment
+        archive_paths.append(path)
+
+    if suffix in PDF_EXTENSIONS:
+        middle_path = base_dir / f"{input_path.name}_middle.json"
+        lines_path = base_dir / f"{input_path.name}_lines.json"
+        if middle_path.exists() and not lines_path.exists():
+            from file_conversion_router.services.sentence_mapping_service import (
+                generate_lines_json_from_middle_json,
+            )
+            generate_lines_json_from_middle_json(str(middle_path), str(lines_path))
+
+        add_json("bbox", lines_path)
+        add_json("layout", middle_path)
+        add_json("content_list", base_dir / f"{input_path.name}_content_list.json")
+
+        pdf_images_dir = base_dir / f"{input_path.name}_images"
+        pdf_images = []
+        for image_path in _iter_image_files(pdf_images_dir) or []:
+            pdf_images.append(_binary_attachment(image_path, include_binary_attachments))
+            archive_paths.append(image_path)
+        if pdf_images:
+            attachments["pdf_images"] = pdf_images
+
+    if suffix in VIDEO_EXTENSIONS:
+        transcript_path = md_path.with_suffix(".json")
+        scenes_dir = base_dir / f"{input_path.stem}_images"
+        scenes_path = scenes_dir / "scenes.json"
+        paragraphs_path = _write_video_paragraphs_sidecar(
+            converter=converter,
+            input_path=input_path,
+            base_dir=base_dir,
+            scenes_path=scenes_path if scenes_path.exists() else None,
+        )
+
+        add_json("transcript", transcript_path)
+        add_json("paragraphs", paragraphs_path)
+        add_json("scenes", scenes_path)
+
+        scene_images = []
+        for image_path in _iter_image_files(scenes_dir) or []:
+            scene_images.append(_binary_attachment(image_path, include_binary_attachments))
+            archive_paths.append(image_path)
+        if scene_images:
+            attachments["scene_images"] = scene_images
+
+    # Keep archive contents deterministic and duplicate-free.
+    unique_paths = []
+    seen = set()
+    for path in archive_paths:
+        resolved = path.resolve()
+        if resolved in seen or not path.exists():
+            continue
+        seen.add(resolved)
+        unique_paths.append(path)
+
+    return attachments, unique_paths, base_dir
+
+
+def _write_artifact_archive(zip_path: Path, archive_paths: list[Path], root_dir: Path) -> None:
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for path in archive_paths:
+            try:
+                arcname = path.relative_to(root_dir)
+            except ValueError:
+                arcname = Path(path.name)
+            zf.write(path, arcname=str(arcname))
+
+
 def _list_index_to_page_format(
     raw_index_helper: list,
     md_content: str,
@@ -190,14 +366,18 @@ def _run_to_markdown(
     input_path: Path,
     output_dir: Path,
     file_uuid: str = "",
+    local_only: bool = False,
 ):
     """Pick the right converter by extension and return (md_path, converter)."""
     suffix = input_path.suffix.lower()
     cls = _get_converter(suffix)
     converter = cls("", "", file_uuid)
+    if local_only and hasattr(converter, "use_remote_vlm_descriptions"):
+        converter.use_remote_vlm_descriptions = False
     converter.file_name = input_path.name
-    output_dir.mkdir(parents=True, exist_ok=True)
-    md_output_path = output_dir / f"{input_path.stem}.md"
+    output_subdir = output_dir / input_path.stem
+    output_subdir.mkdir(parents=True, exist_ok=True)
+    md_output_path = output_subdir / f"{input_path.name}.md"
     md_path = converter._to_markdown(input_path, md_output_path)
     return md_path, converter
 
@@ -207,10 +387,15 @@ def _run_to_markdown(
 # ---------------------------------------------------------------------------
 
 @app.post("/convert")
+@convert_router.post("/convert")
 async def convert_file(
     file: UploadFile = File(...),
+    include_binary_attachments: bool = Form(
+        False,
+        description="Include base64 image attachments in the JSON response. Use /convert/archive for binary delivery.",
+    ),
 ):
-    """Convert a file to markdown. Auto-detects file type by extension."""
+    """Pure conversion: file to markdown plus sidecars, without chunking or DB writes."""
     suffix = Path(file.filename).suffix.lower()
     _get_converter(suffix)  # validates extension
 
@@ -221,20 +406,33 @@ async def convert_file(
 
         if suffix in GPU_EXTENSIONS:
             async with _gpu_lock:
-                md_path, _ = await asyncio.to_thread(
-                    _run_to_markdown, input_path, output_dir
+                md_path, converter = await asyncio.to_thread(
+                    _run_to_markdown, input_path, output_dir, "", True
                 )
         else:
-            md_path, _ = _run_to_markdown(input_path, output_dir)
+            md_path, converter = _run_to_markdown(
+                input_path, output_dir, local_only=True
+            )
 
         if md_path is None or not Path(md_path).exists():
             raise HTTPException(500, "Conversion failed — no markdown output produced")
 
         md_content = Path(md_path).read_text(encoding="utf-8")
+        attachments, _, _ = _collect_pure_conversion_artifacts(
+            input_path=input_path,
+            md_path=Path(md_path),
+            converter=converter,
+            include_binary_attachments=include_binary_attachments,
+        )
 
         return JSONResponse({
+            "mode": "convert",
+            "stored": False,
+            "chunked": False,
+            "embedded": False,
             "file_name": file.filename,
             "md_content": md_content,
+            "attachments": attachments,
         })
     except HTTPException:
         raise
@@ -245,15 +443,67 @@ async def convert_file(
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+@app.post("/convert/archive")
+@convert_router.post("/convert/archive")
+async def convert_file_archive(
+    file: UploadFile = File(...),
+):
+    """Pure conversion: return a zip containing markdown and all sidecar files."""
+    suffix = Path(file.filename).suffix.lower()
+    _get_converter(suffix)
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix="tai_convert_archive_"))
+    try:
+        input_path, _ = _save_upload(file, tmp_dir / "input")
+        output_dir = tmp_dir / "output"
+
+        if suffix in GPU_EXTENSIONS:
+            async with _gpu_lock:
+                md_path, converter = await asyncio.to_thread(
+                    _run_to_markdown, input_path, output_dir, "", True
+                )
+        else:
+            md_path, converter = _run_to_markdown(
+                input_path, output_dir, local_only=True
+            )
+
+        if md_path is None or not Path(md_path).exists():
+            raise HTTPException(500, "Conversion failed — no markdown output produced")
+
+        _, archive_paths, archive_root = _collect_pure_conversion_artifacts(
+            input_path=input_path,
+            md_path=Path(md_path),
+            converter=converter,
+            include_binary_attachments=False,
+        )
+        archive_path = tmp_dir / f"{Path(file.filename).stem}_conversion.zip"
+        _write_artifact_archive(archive_path, archive_paths, archive_root)
+
+        return FileResponse(
+            path=str(archive_path),
+            media_type="application/zip",
+            filename=archive_path.name,
+            background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True),
+        )
+    except HTTPException:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+    except Exception as e:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        logger.exception("Conversion archive failed")
+        raise HTTPException(500, f"Conversion archive error: {e}")
+
+
 # ---------------------------------------------------------------------------
-# POST /process  —  file → markdown → chunks → DB
+# POST /ingest and /process  —  file → markdown → chunks → DB
 # ---------------------------------------------------------------------------
 
+@app.post("/ingest")
 @app.post("/process")
 async def process_file(
     file: UploadFile = File(...),
 ):
-    """Convert, chunk, store in DB, and return chunks JSON."""
+    """Ingest a file: convert, chunk, store in DB, and return chunks JSON."""
     suffix = Path(file.filename).suffix.lower()
     _get_converter(suffix)  # validates extension
 

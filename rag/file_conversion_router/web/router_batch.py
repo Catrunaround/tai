@@ -13,7 +13,6 @@ Endpoints:
 
 import asyncio
 import logging
-import uuid
 from pathlib import Path
 from typing import List, Optional
 
@@ -49,21 +48,22 @@ router = APIRouter()
 async def upload_batch(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(..., description="Files to upload and convert"),
-    course_code: Optional[str] = Form(None, description="Course identifier (e.g., 'CS61A'). Required only when auto_embed=true; for convert-only jobs an ad-hoc id is synthesized from the job id."),
+    course_code: Optional[str] = Form(None, description="Course identifier (e.g., 'CS61A'). Required for ingest jobs."),
     course_name: Optional[str] = Form(None, description="Full course name. Defaults to course_code when omitted."),
-    auto_embed: bool = Form(True, description="Generate embeddings after conversion. When false, course_code/course_name are optional."),
+    auto_embed: bool = Form(True, description="Generate embeddings after conversion and DB chunk insertion."),
     output_dir: Optional[str] = Form(None, description="Custom output directory (optional)"),
     db_path: Optional[str] = Form(None, description="Custom database path (optional)"),
 ):
     """
-    Upload files and start batch conversion.
+    Upload files and start a directory-service ingest job.
 
     This endpoint:
     1. Validates uploaded files (extension, size)
     2. Saves files to temporary storage
-    3. Creates a batch job
-    4. Starts background processing
-    5. Returns job ID for progress tracking
+    3. Converts files to markdown through directory_service
+    4. Chunks converted content and writes file/chunk rows to SQLite
+    5. Optionally creates embeddings
+    6. Returns job ID for progress tracking
 
     Use the returned job_id to:
     - Stream progress: GET /batch/{job_id}/stream
@@ -73,12 +73,12 @@ async def upload_batch(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
-    # course_code is required when embedding into the course-scoped vector DB,
-    # but for convert-only jobs (auto_embed=false) we synthesize a disposable id.
-    if auto_embed and not course_code:
+    # /batch/upload is always the ingest/directory-service path. Pure
+    # conversion is exposed separately at /convert and never writes to DB.
+    if not course_code:
         raise HTTPException(
             status_code=400,
-            detail="course_code is required when auto_embed=true",
+            detail="course_code is required for /batch/upload ingest jobs. Use /convert for convert-only jobs.",
         )
 
     # Validate files
@@ -97,10 +97,9 @@ async def upload_batch(
     # Filter to only valid files
     valid_files = [f for f in files if f.filename in validation_result.valid_files]
 
-    # Create job (course identifiers are still tracked on the job for traceability;
-    # synthesize a disposable course code for convert-only requests).
+    # Create job. This path always has course context because it writes to DB.
     job_manager = get_job_manager()
-    effective_course_code = course_code or f"adhoc_{uuid.uuid4().hex[:8]}"
+    effective_course_code = course_code
     effective_course_name = course_name or effective_course_code
 
     job_id = job_manager.create_job(
@@ -117,30 +116,17 @@ async def upload_batch(
         preserve_paths=True,
     )
 
-    # Two distinct modes:
-    # 1. course_code provided → write into the course's SQLite metadata DB so the
-    #    files become queryable / embeddable as part of that course.
-    # 2. no course_code → "convert-only": never touch any persistent course DB.
-    #    Use an in-memory SQLite that is discarded when the conversion finishes.
-    #    The markdown and transcript JSON are still written to disk and remain
-    #    downloadable via /markdown and /transcript while the job is alive.
-    convert_only = course_code is None
-
     if output_dir:
         final_output_dir = Path(output_dir)
-    elif convert_only:
-        final_output_dir = get_course_output_dir(effective_course_code)
     else:
         final_output_dir = get_course_output_dir(effective_course_code)
 
     if db_path:
         final_db_path = Path(db_path)
-    elif convert_only:
-        final_db_path = Path(":memory:")
     else:
         final_db_path = get_course_db_path(effective_course_code)
 
-    # Start background processing. The web API always reconverts on upload —
+    # Start background processing. The web ingest API always reconverts on upload —
     # callers expect fresh markdown/sidecar JSON every time, even when the
     # exact same file was previously uploaded. The legacy directory-batch
     # entry point keeps the cache behavior so course-scoped reprocessing of
