@@ -13,11 +13,12 @@ Endpoints:
 
 import asyncio
 import logging
+import uuid
 from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 
 from file_conversion_router.config import (
     get_course_db_path,
@@ -48,9 +49,9 @@ router = APIRouter()
 async def upload_batch(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(..., description="Files to upload and convert"),
-    course_code: str = Form(..., description="Course identifier (e.g., 'CS61A')"),
-    course_name: str = Form(..., description="Full course name"),
-    auto_embed: bool = Form(True, description="Generate embeddings after conversion"),
+    course_code: Optional[str] = Form(None, description="Course identifier (e.g., 'CS61A'). Required only when auto_embed=true; for convert-only jobs an ad-hoc id is synthesized from the job id."),
+    course_name: Optional[str] = Form(None, description="Full course name. Defaults to course_code when omitted."),
+    auto_embed: bool = Form(True, description="Generate embeddings after conversion. When false, course_code/course_name are optional."),
     output_dir: Optional[str] = Form(None, description="Custom output directory (optional)"),
     db_path: Optional[str] = Form(None, description="Custom database path (optional)"),
 ):
@@ -72,6 +73,14 @@ async def upload_batch(
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
 
+    # course_code is required when embedding into the course-scoped vector DB,
+    # but for convert-only jobs (auto_embed=false) we synthesize a disposable id.
+    if auto_embed and not course_code:
+        raise HTTPException(
+            status_code=400,
+            detail="course_code is required when auto_embed=true",
+        )
+
     # Validate files
     validator = get_file_validator()
     validation_result = validator.validate_batch(files)
@@ -88,11 +97,15 @@ async def upload_batch(
     # Filter to only valid files
     valid_files = [f for f in files if f.filename in validation_result.valid_files]
 
-    # Create job
+    # Create job (course identifiers are still tracked on the job for traceability;
+    # synthesize a disposable course code for convert-only requests).
     job_manager = get_job_manager()
+    effective_course_code = course_code or f"adhoc_{uuid.uuid4().hex[:8]}"
+    effective_course_name = course_name or effective_course_code
+
     job_id = job_manager.create_job(
-        course_code=course_code,
-        course_name=course_name,
+        course_code=effective_course_code,
+        course_name=effective_course_name,
         file_count=len(valid_files),
     )
 
@@ -104,29 +117,46 @@ async def upload_batch(
         preserve_paths=True,
     )
 
-    # Determine output directory and database path
+    # Two distinct modes:
+    # 1. course_code provided → write into the course's SQLite metadata DB so the
+    #    files become queryable / embeddable as part of that course.
+    # 2. no course_code → "convert-only": never touch any persistent course DB.
+    #    Use an in-memory SQLite that is discarded when the conversion finishes.
+    #    The markdown and transcript JSON are still written to disk and remain
+    #    downloadable via /markdown and /transcript while the job is alive.
+    convert_only = course_code is None
+
     if output_dir:
         final_output_dir = Path(output_dir)
+    elif convert_only:
+        final_output_dir = get_course_output_dir(effective_course_code)
     else:
-        final_output_dir = get_course_output_dir(course_code)
+        final_output_dir = get_course_output_dir(effective_course_code)
 
     if db_path:
         final_db_path = Path(db_path)
+    elif convert_only:
+        final_db_path = Path(":memory:")
     else:
-        final_db_path = get_course_db_path(course_code)
+        final_db_path = get_course_db_path(effective_course_code)
 
-    # Start background processing
+    # Start background processing. The web API always reconverts on upload —
+    # callers expect fresh markdown/sidecar JSON every time, even when the
+    # exact same file was previously uploaded. The legacy directory-batch
+    # entry point keeps the cache behavior so course-scoped reprocessing of
+    # unchanged files stays cheap.
     async def run_batch_processing():
         processor = get_batch_processor()
         try:
             await processor.process_batch(
                 job_id=job_id,
                 file_paths=saved_paths,
-                course_code=course_code,
-                course_name=course_name,
+                course_code=effective_course_code,
+                course_name=effective_course_name,
                 output_dir=final_output_dir,
                 db_path=final_db_path,
                 auto_embed=auto_embed,
+                skip_cache=True,
             )
         finally:
             # Schedule temp file cleanup
@@ -277,6 +307,284 @@ async def cancel_job(job_id: str):
             status_code=500,
             detail="Failed to cancel job"
         )
+
+
+def _find_result_by_name(job, file_name: str):
+    """Locate a FileResult by name with tolerant matching.
+
+    Some clients URL-substitute spaces with underscores instead of using
+    percent-encoding, so we accept either form. Match priority:
+        1. exact match
+        2. underscores-as-spaces (and vice versa)
+        3. case-insensitive variants of (1) and (2)
+    """
+    if not job.results:
+        return None
+
+    by_exact = {r.file_name: r for r in job.results}
+    if file_name in by_exact:
+        return by_exact[file_name]
+
+    def _normalize(name: str) -> str:
+        return name.replace("_", " ")
+
+    target = _normalize(file_name)
+    for r in job.results:
+        if _normalize(r.file_name) == target:
+            return r
+
+    target_lower = target.lower()
+    for r in job.results:
+        if _normalize(r.file_name).lower() == target_lower:
+            return r
+
+    return None
+
+
+@router.get("/{job_id}/files/{file_name}/transcript")
+async def get_file_transcript(job_id: str, file_name: str):
+    """
+    Download the timestamped transcript JSON for a converted video file.
+
+    For video inputs (mp4/mkv/webm/mov), the conversion pipeline writes a
+    sidecar JSON with per-segment `start time`, `end time`, `speaker`, and
+    `text content` (plus title markers for navigation). This endpoint serves
+    that JSON so remote callers can map paragraphs to video timestamps for
+    click-to-jump UIs.
+
+    Returns 404 if the job, file, or transcript file is not found.
+    """
+    job_manager = get_job_manager()
+    job = job_manager.get_job_status(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    matching = _find_result_by_name(job, file_name)
+    if not matching:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{file_name}' not found in job {job_id}",
+        )
+    if not matching.transcript_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No transcript available for '{file_name}' (not a video, or conversion incomplete)",
+        )
+
+    transcript_file = Path(matching.transcript_path)
+    if not transcript_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Transcript file missing on disk: {transcript_file}",
+        )
+
+    return FileResponse(
+        path=str(transcript_file),
+        media_type="application/json",
+        filename=transcript_file.name,
+    )
+
+
+@router.get("/{job_id}/files/{file_name}/markdown")
+async def get_file_markdown(job_id: str, file_name: str):
+    """
+    Download the converted markdown for a file in a completed job.
+
+    Works for any file type the converter produces markdown for (PDF, video,
+    notebook, etc.). Returns 404 if the job, file, or markdown is not found.
+    """
+    job_manager = get_job_manager()
+    job = job_manager.get_job_status(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    matching = _find_result_by_name(job, file_name)
+    if not matching:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{file_name}' not found in job {job_id}",
+        )
+    if not matching.markdown_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No markdown available for '{file_name}' (conversion incomplete or failed)",
+        )
+
+    md_file = Path(matching.markdown_path)
+    if not md_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Markdown file missing on disk: {md_file}",
+        )
+
+    return FileResponse(
+        path=str(md_file),
+        media_type="text/markdown; charset=utf-8",
+        filename=md_file.name,
+    )
+
+
+@router.get("/{job_id}/files/{file_name}/bbox")
+async def get_file_bbox(job_id: str, file_name: str):
+    """
+    Download the per-line bbox JSON for a converted PDF file.
+
+    For PDF inputs, the conversion pipeline derives `<file>_lines.json` from
+    MinerU's `_middle.json`. Each entry contains `content`, `bbox`
+    `[x1, y1, x2, y2]`, `index`, `page_index`, and `block_type`, allowing
+    callers to highlight or jump to source regions in the original PDF.
+
+    Returns 404 if the job, file, or bbox JSON is not found.
+    """
+    job_manager = get_job_manager()
+    job = job_manager.get_job_status(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    matching = _find_result_by_name(job, file_name)
+    if not matching:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{file_name}' not found in job {job_id}",
+        )
+    if not matching.bbox_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No bbox JSON available for '{file_name}' (not a PDF, or conversion incomplete)",
+        )
+
+    bbox_file = Path(matching.bbox_path)
+    if not bbox_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Bbox JSON file missing on disk: {bbox_file}",
+        )
+
+    return FileResponse(
+        path=str(bbox_file),
+        media_type="application/json",
+        filename=bbox_file.name,
+    )
+
+
+@router.get("/{job_id}/files/{file_name}/scenes")
+async def get_file_scenes(job_id: str, file_name: str):
+    """
+    Return the per-scene snapshot index for a converted video file.
+
+    For video inputs, the conversion pipeline runs PySceneDetect's
+    AdaptiveDetector and saves one JPEG per detected scene plus a
+    `scenes.json` index. This endpoint returns that JSON with each entry's
+    `image_url` injected so callers can fetch the snapshots via
+    `GET /batch/{job_id}/files/{file_name}/scenes/{image_name}`.
+
+    Returns 404 if the job, file, or scenes index is not found.
+    """
+    import json as _json
+
+    job_manager = get_job_manager()
+    job = job_manager.get_job_status(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    matching = _find_result_by_name(job, file_name)
+    if not matching:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{file_name}' not found in job {job_id}",
+        )
+    if not matching.scenes_path:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No scenes index available for '{file_name}' (not a video, or conversion incomplete)",
+        )
+
+    scenes_file = Path(matching.scenes_path)
+    if not scenes_file.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Scenes index file missing on disk: {scenes_file}",
+        )
+
+    try:
+        scenes = _json.loads(scenes_file.read_text(encoding="utf-8"))
+    except _json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse scenes index: {e}",
+        )
+
+    # Inject image URLs so callers don't have to know the storage layout.
+    for entry in scenes:
+        if not isinstance(entry, dict):
+            continue
+        primary = entry.get("image")
+        if primary:
+            entry["image_url"] = (
+                f"/batch/{job_id}/files/{file_name}/scenes/{primary}"
+            )
+        images = entry.get("images") or []
+        if images:
+            entry["image_urls"] = [
+                f"/batch/{job_id}/files/{file_name}/scenes/{img}"
+                for img in images
+            ]
+
+    return scenes
+
+
+@router.get("/{job_id}/files/{file_name}/scenes/{image_name}")
+async def get_file_scene_image(job_id: str, file_name: str, image_name: str):
+    """
+    Download a single per-scene snapshot JPEG.
+
+    The image must live inside the file's scenes_dir; any path traversal
+    attempt (e.g., `..`, absolute paths) is rejected.
+    """
+    job_manager = get_job_manager()
+    job = job_manager.get_job_status(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+
+    matching = _find_result_by_name(job, file_name)
+    if not matching:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File '{file_name}' not found in job {job_id}",
+        )
+    if not matching.scenes_dir:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No scenes available for '{file_name}'",
+        )
+
+    scenes_dir = Path(matching.scenes_dir).resolve()
+    # Reject anything that doesn't resolve to a child of scenes_dir.
+    candidate = (scenes_dir / image_name).resolve()
+    try:
+        candidate.relative_to(scenes_dir)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid image name")
+
+    if not candidate.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Snapshot not found: {image_name}",
+        )
+
+    suffix = candidate.suffix.lower()
+    media_type = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }.get(suffix, "application/octet-stream")
+
+    return FileResponse(
+        path=str(candidate),
+        media_type=media_type,
+        filename=candidate.name,
+    )
 
 
 @router.get("/jobs", response_model=List[BatchJobStatus])

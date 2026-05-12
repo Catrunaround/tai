@@ -81,6 +81,26 @@ class FileResult(BaseModel):
     chunks_count: int = 0
     status: FileStatus
     error: Optional[str] = None
+    # Populated for video files: server-side path to the timestamped transcript JSON
+    # and a relative URL remote callers can GET to download it.
+    transcript_path: Optional[str] = None
+    transcript_url: Optional[str] = None
+    # Populated for any successfully converted file: server-side path to the
+    # produced markdown and a relative URL remote callers can GET to download it.
+    markdown_path: Optional[str] = None
+    markdown_url: Optional[str] = None
+    # Populated for PDF files: server-side path to the per-line bbox JSON
+    # (`<file>_lines.json`) produced from MinerU's middle.json, plus a
+    # relative URL remote callers can GET to download it.
+    bbox_path: Optional[str] = None
+    bbox_url: Optional[str] = None
+    # Populated for video files: server-side path to the per-scene snapshot
+    # index JSON (`<images_dir>/scenes.json`) and the directory holding the
+    # extracted JPEG snapshots, plus a relative URL the caller can GET to
+    # fetch the scenes index (with each entry's `image_url` injected).
+    scenes_path: Optional[str] = None
+    scenes_dir: Optional[str] = None
+    scenes_url: Optional[str] = None
 
 
 class BatchJobStatus(BaseModel):

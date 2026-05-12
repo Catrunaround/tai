@@ -290,6 +290,7 @@ class BatchProcessor:
         output_dir: Path,
         db_path: Path,
         auto_embed: bool = True,
+        skip_cache: bool = False,
     ) -> BatchConversionResult:
         """
         Process a batch of files.
@@ -311,10 +312,37 @@ class BatchProcessor:
         ))
 
         # Progress callback that updates job status and pushes events
-        async def on_progress(file_name: str, status: str, error: Optional[str]):
+        async def on_progress(
+            file_name: str,
+            status: str,
+            error: Optional[str],
+            extra: Optional[Dict[str, Any]] = None,
+        ):
             # Check for cancellation
             if self.job_manager.is_cancelled(job_id):
                 raise asyncio.CancelledError("Job cancelled by user")
+
+            transcript_path = (extra or {}).get("transcript_path")
+            transcript_url = (
+                f"/batch/{job_id}/files/{file_name}/transcript"
+                if transcript_path else None
+            )
+            markdown_path = (extra or {}).get("markdown_path")
+            markdown_url = (
+                f"/batch/{job_id}/files/{file_name}/markdown"
+                if markdown_path else None
+            )
+            bbox_path = (extra or {}).get("bbox_path")
+            bbox_url = (
+                f"/batch/{job_id}/files/{file_name}/bbox"
+                if bbox_path else None
+            )
+            scenes_path = (extra or {}).get("scenes_path")
+            scenes_dir = (extra or {}).get("scenes_dir")
+            scenes_url = (
+                f"/batch/{job_id}/files/{file_name}/scenes"
+                if scenes_path else None
+            )
 
             if status == "started":
                 self.job_manager.update_job_status(job_id, current_file=file_name)
@@ -332,6 +360,15 @@ class BatchProcessor:
                     add_result=FileResult(
                         file_name=file_name,
                         status=FileStatus.COMPLETED,
+                        transcript_path=transcript_path,
+                        transcript_url=transcript_url,
+                        markdown_path=markdown_path,
+                        markdown_url=markdown_url,
+                        bbox_path=bbox_path,
+                        bbox_url=bbox_url,
+                        scenes_path=scenes_path,
+                        scenes_dir=scenes_dir,
+                        scenes_url=scenes_url,
                     ),
                 )
                 await self.job_manager.push_progress(job_id, ProgressEvent(
@@ -369,6 +406,15 @@ class BatchProcessor:
                     add_result=FileResult(
                         file_name=file_name,
                         status=FileStatus.SKIPPED,
+                        transcript_path=transcript_path,
+                        transcript_url=transcript_url,
+                        markdown_path=markdown_path,
+                        markdown_url=markdown_url,
+                        bbox_path=bbox_path,
+                        bbox_url=bbox_url,
+                        scenes_path=scenes_path,
+                        scenes_dir=scenes_dir,
+                        scenes_url=scenes_url,
                     ),
                 )
                 await self.job_manager.push_progress(job_id, ProgressEvent(
@@ -379,14 +425,19 @@ class BatchProcessor:
                 ))
 
         # Synchronous callback wrapper for batch_convert_files
-        def sync_progress_callback(file_name: str, status: str, error: Optional[str]):
+        def sync_progress_callback(
+            file_name: str,
+            status: str,
+            error: Optional[str],
+            extra: Optional[Dict[str, Any]] = None,
+        ):
             # Schedule the async callback
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
-                    asyncio.create_task(on_progress(file_name, status, error))
+                    asyncio.create_task(on_progress(file_name, status, error, extra))
                 else:
-                    loop.run_until_complete(on_progress(file_name, status, error))
+                    loop.run_until_complete(on_progress(file_name, status, error, extra))
             except Exception as e:
                 logger.error(f"Error in progress callback: {e}")
 
@@ -400,6 +451,7 @@ class BatchProcessor:
                 db_path=db_path,
                 auto_embed=auto_embed,
                 progress_callback=sync_progress_callback,
+                skip_cache=skip_cache,
             )
 
             # Calculate duration

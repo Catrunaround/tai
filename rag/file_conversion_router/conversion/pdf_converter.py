@@ -1,5 +1,4 @@
 from file_conversion_router.conversion.base_converter import BaseConverter
-from file_conversion_router.services.tai_MinerU_service.api import convert_pdf_to_md_by_MinerU
 from pathlib import Path
 import json
 import re
@@ -42,6 +41,7 @@ class PdfConverter(BaseConverter):
         output_dir = output_path.parent
 
         if conversion_method == "MinerU":
+            from file_conversion_router.services.tai_MinerU_service.api import convert_pdf_to_md_by_MinerU
             md_file_path = convert_pdf_to_md_by_MinerU(input_path, output_dir)
 
             if md_file_path.exists():
