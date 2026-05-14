@@ -14,7 +14,7 @@ def parse_doc(
         pdf_path: Path,
         output_folder: Path,
         lang: str = "en",
-        backend: str = "vlm-transformers",
+        backend: str = "pipeline",
         method: str = "auto",
         server_url: str | None = None,
         start_page_id: int = 0,

@@ -15,7 +15,7 @@ Usage:
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from file_conversion_router.services.temp_storage_service import get_temp_storage_service
@@ -91,30 +91,8 @@ def create_app(
 
     app.include_router(batch_router, prefix="/batch", tags=["batch"])
 
-    @app.post("/convert", tags=["convert"])
-    async def convert_file(
-        file: UploadFile = File(...),
-        include_binary_attachments: bool = Form(
-            False,
-            description="Include base64 image attachments in the JSON response. Use /convert/archive for binary delivery.",
-        ),
-    ):
-        """Pure conversion proxy. Loads converter dependencies only when used."""
-        from file_conversion_router.conversion_api import convert_file as _convert_file
-        return await _convert_file(
-            file=file,
-            include_binary_attachments=include_binary_attachments,
-        )
-
-    @app.post("/convert/archive", tags=["convert"])
-    async def convert_file_archive(
-        file: UploadFile = File(...),
-    ):
-        """Pure conversion archive proxy. Loads converter dependencies only when used."""
-        from file_conversion_router.conversion_api import (
-            convert_file_archive as _convert_file_archive,
-        )
-        return await _convert_file_archive(file=file)
+    from file_conversion_router.conversion_api import convert_router
+    app.include_router(convert_router)
 
     # Health check endpoint
     @app.get("/health", tags=["system"])

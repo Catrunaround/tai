@@ -746,6 +746,20 @@ class BaseConverter(ABC):
 
 
 
+    def collect_artifacts(
+        self,
+        base_dir: Path,
+        input_path: Path,
+        include_binary_attachments: bool = False,
+    ) -> tuple[dict, list[Path]]:
+        """Return (attachments_dict, extra_archive_paths) for this converter's sidecar files.
+
+        Override in subclasses to expose format-specific outputs (images, JSON sidecars, etc.).
+        To add a new output file: override this method in the relevant converter — no changes
+        needed anywhere else.
+        """
+        return {}, []
+
     @abstractmethod
     def _to_markdown(self, input_path: Path, output_path: Path) -> None:
         """Convert the input file to Expected Markdown format. To be implemented by subclasses."""

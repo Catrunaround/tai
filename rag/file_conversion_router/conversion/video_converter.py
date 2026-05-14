@@ -1,4 +1,10 @@
 from file_conversion_router.conversion.base_converter import BaseConverter
+from file_conversion_router.utils.artifact_helpers import (
+    json_attachment,
+    binary_attachment,
+    iter_image_files,
+)
+from pathlib import Path
 from moviepy import AudioFileClip
 import whisperx
 from scenedetect import AdaptiveDetector
@@ -284,6 +290,92 @@ class VideoConverter(BaseConverter):
             # Write the list of dictionaries to the output file as JSON.
         with open(json_output_path, 'w', encoding='utf-8') as outfile:
             json.dump(segments_formatted, outfile, indent=4)
+
+    def collect_artifacts(
+        self,
+        base_dir: Path,
+        input_path: Path,
+        include_binary_attachments: bool = False,
+    ) -> tuple[dict, list[Path]]:
+        from pathlib import Path as _Path
+        attachments: dict = {}
+        archive_paths: list[_Path] = []
+
+        def add_json(key: str, path) -> None:
+            item = json_attachment(path)
+            if item is None:
+                return
+            attachments[key] = item
+            archive_paths.append(path)
+
+        transcript_path = base_dir / f"{input_path.stem}.json"
+        scenes_dir = base_dir / f"{input_path.stem}_images"
+        scenes_path = scenes_dir / "scenes.json"
+
+        # Build paragraphs sidecar from in-memory converter state
+        paragraphs_path = self._write_paragraphs_sidecar(
+            base_dir=base_dir,
+            input_path=input_path,
+            scenes_path=scenes_path if scenes_path.exists() else None,
+        )
+
+        add_json("transcript", transcript_path)
+        add_json("paragraphs", paragraphs_path)
+        add_json("scenes", scenes_path)
+
+        scene_images = []
+        for image_path in iter_image_files(scenes_dir) or []:
+            scene_images.append(binary_attachment(image_path, include_binary_attachments))
+            archive_paths.append(image_path)
+        if scene_images:
+            attachments["scene_images"] = scene_images
+
+        return attachments, archive_paths
+
+    def _write_paragraphs_sidecar(
+        self,
+        base_dir: Path,
+        input_path: Path,
+        scenes_path: Path | None,
+    ) -> Path | None:
+        """Write paragraphs.json next to the markdown and return its path, or None."""
+        if not self.paragraphs:
+            return None
+
+        scenes = []
+        if scenes_path and scenes_path.exists():
+            try:
+                scenes = json.loads(scenes_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                scenes = []
+
+        def matching_scene(start_time: float) -> dict:
+            for scene in scenes:
+                try:
+                    if abs(float(scene.get("start_time", -1)) - float(start_time)) < 0.01:
+                        return scene
+                except (TypeError, ValueError):
+                    continue
+            return {}
+
+        payload = []
+        for idx, paragraph in enumerate(self.paragraphs, start=1):
+            start_time = paragraph.get("start_time", 0)
+            scene = matching_scene(start_time)
+            payload.append({
+                "paragraph_index": idx,
+                "start_time": start_time,
+                "utterances": paragraph.get("utterances", []),
+                "snapshot": scene.get("image"),
+                "snapshots": scene.get("images", []),
+            })
+
+        paragraphs_path = base_dir / f"{input_path.name}_paragraphs.json"
+        paragraphs_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return paragraphs_path
 
     def _to_markdown(self, input_path, output_path):
         self.file_name = input_path.name

@@ -6,6 +6,11 @@ import os
 import re
 
 from loguru import logger
+from file_conversion_router.utils.artifact_helpers import (
+    json_attachment,
+    binary_attachment,
+    iter_image_files,
+)
 
 
 class PdfConverter(BaseConverter):
@@ -107,10 +112,52 @@ class PdfConverter(BaseConverter):
             images_dir = output_dir / f"{md_file_path.stem}_images"
             cleaned_content = self.clean_markdown_content(target, images_dir)
             json_file_path = md_file_path.with_name(f"{md_file_path.stem}_content_list.json")
-            with open(json_file_path, "r", encoding="utf-8") as f_json:
-                data = json.load(f_json)
+            if json_file_path.exists():
+                with open(json_file_path, "r", encoding="utf-8") as f_json:
+                    data = json.load(f_json)
+            else:
+                logger.warning(f"content_list.json not found at {json_file_path}, skipping index generation")
+                data = []
             self.generate_index_helper(data, md=cleaned_content)
             return target
+
+    def collect_artifacts(
+        self,
+        base_dir: Path,
+        input_path: Path,
+        include_binary_attachments: bool = False,
+    ) -> tuple[dict, list[Path]]:
+        attachments: dict = {}
+        archive_paths: list[Path] = []
+
+        def add_json(key: str, path: Path | None) -> None:
+            item = json_attachment(path)
+            if item is None:
+                return
+            attachments[key] = item
+            archive_paths.append(path)
+
+        middle_path = base_dir / f"{input_path.name}_middle.json"
+        lines_path = base_dir / f"{input_path.name}_lines.json"
+        if middle_path.exists() and not lines_path.exists():
+            from file_conversion_router.services.sentence_mapping_service import (
+                generate_lines_json_from_middle_json,
+            )
+            generate_lines_json_from_middle_json(str(middle_path), str(lines_path))
+
+        add_json("bbox", lines_path)
+        add_json("layout", middle_path)
+        add_json("content_list", base_dir / f"{input_path.name}_content_list.json")
+
+        pdf_images_dir = base_dir / f"{input_path.name}_images"
+        pdf_images = []
+        for image_path in iter_image_files(pdf_images_dir) or []:
+            pdf_images.append(binary_attachment(image_path, include_binary_attachments))
+            archive_paths.append(image_path)
+        if pdf_images:
+            attachments["pdf_images"] = pdf_images
+
+        return attachments, archive_paths
 
     def generate_index_helper(self, data, md=None):
         self.index_helper = []

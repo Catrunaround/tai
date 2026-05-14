@@ -25,6 +25,11 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
+from file_conversion_router.utils.artifact_helpers import (
+    json_attachment as _json_attachment_fn,
+    binary_attachment as _binary_attachment_fn,
+    iter_image_files as _iter_image_files_fn,
+)
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, UploadFile
@@ -166,83 +171,16 @@ def _save_upload(upload: UploadFile, dest_dir: Path) -> tuple[Path, bytes]:
 
 
 def _json_attachment(path: Path) -> dict | None:
-    if not path.exists():
-        return None
-    try:
-        content = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        content = path.read_text(encoding="utf-8")
-    return {
-        "file_name": path.name,
-        "content_type": "application/json",
-        "content": content,
-    }
+    return _json_attachment_fn(path)
 
 
 def _binary_attachment(path: Path, include_content: bool = False) -> dict:
-    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    item = {
-        "file_name": path.name,
-        "content_type": content_type,
-        "size_bytes": path.stat().st_size,
-    }
-    if include_content:
-        item["content_base64"] = base64.b64encode(path.read_bytes()).decode("ascii")
-    return item
+    return _binary_attachment_fn(path, include_content)
 
 
 def _iter_image_files(directory: Path):
-    if not directory.exists() or not directory.is_dir():
-        return
-    for path in sorted(directory.iterdir()):
-        if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
-            yield path
+    return _iter_image_files_fn(directory)
 
-
-def _write_video_paragraphs_sidecar(
-    converter,
-    input_path: Path,
-    base_dir: Path,
-    scenes_path: Path | None,
-) -> Path | None:
-    paragraphs = getattr(converter, "paragraphs", None)
-    if not paragraphs:
-        return None
-
-    scenes = []
-    if scenes_path and scenes_path.exists():
-        try:
-            scenes = json.loads(scenes_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            scenes = []
-
-    def matching_scene(start_time: float) -> dict:
-        for scene in scenes:
-            try:
-                if abs(float(scene.get("start_time", -1)) - float(start_time)) < 0.01:
-                    return scene
-            except (TypeError, ValueError):
-                continue
-        return {}
-
-    payload = []
-    for idx, paragraph in enumerate(paragraphs, start=1):
-        start_time = paragraph.get("start_time", 0)
-        scene = matching_scene(start_time)
-        payload.append({
-            "paragraph_index": idx,
-            "start_time": start_time,
-            "utterances": paragraph.get("utterances", []),
-            "snapshot": scene.get("image"),
-            "snapshots": scene.get("images", []),
-        })
-
-    paragraphs_path = base_dir / f"{input_path.name}_paragraphs.json"
-    paragraphs_path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    return paragraphs_path
 
 
 def _collect_pure_conversion_artifacts(
@@ -251,73 +189,23 @@ def _collect_pure_conversion_artifacts(
     converter,
     include_binary_attachments: bool = False,
 ) -> tuple[dict, list[Path], Path]:
-    """Collect markdown sidecars without chunking, embedding, or touching a DB."""
+    """Delegate artifact collection to the converter, then dedup paths.
+
+    To add outputs for a new or existing format, override collect_artifacts()
+    in the relevant converter class — this function never needs to change.
+    """
     base_dir = md_path.parent
-    suffix = input_path.suffix.lower()
-    archive_paths = [md_path]
-    attachments: dict[str, object] = {}
+    attachments, extra_paths = converter.collect_artifacts(
+        base_dir, input_path, include_binary_attachments
+    )
 
-    def add_json(key: str, path: Path | None):
-        if not path:
-            return
-        attachment = _json_attachment(path)
-        if attachment is None:
-            return
-        attachments[key] = attachment
-        archive_paths.append(path)
-
-    if suffix in PDF_EXTENSIONS:
-        middle_path = base_dir / f"{input_path.name}_middle.json"
-        lines_path = base_dir / f"{input_path.name}_lines.json"
-        if middle_path.exists() and not lines_path.exists():
-            from file_conversion_router.services.sentence_mapping_service import (
-                generate_lines_json_from_middle_json,
-            )
-            generate_lines_json_from_middle_json(str(middle_path), str(lines_path))
-
-        add_json("bbox", lines_path)
-        add_json("layout", middle_path)
-        add_json("content_list", base_dir / f"{input_path.name}_content_list.json")
-
-        pdf_images_dir = base_dir / f"{input_path.name}_images"
-        pdf_images = []
-        for image_path in _iter_image_files(pdf_images_dir) or []:
-            pdf_images.append(_binary_attachment(image_path, include_binary_attachments))
-            archive_paths.append(image_path)
-        if pdf_images:
-            attachments["pdf_images"] = pdf_images
-
-    if suffix in VIDEO_EXTENSIONS:
-        transcript_path = md_path.with_suffix(".json")
-        scenes_dir = base_dir / f"{input_path.stem}_images"
-        scenes_path = scenes_dir / "scenes.json"
-        paragraphs_path = _write_video_paragraphs_sidecar(
-            converter=converter,
-            input_path=input_path,
-            base_dir=base_dir,
-            scenes_path=scenes_path if scenes_path.exists() else None,
-        )
-
-        add_json("transcript", transcript_path)
-        add_json("paragraphs", paragraphs_path)
-        add_json("scenes", scenes_path)
-
-        scene_images = []
-        for image_path in _iter_image_files(scenes_dir) or []:
-            scene_images.append(_binary_attachment(image_path, include_binary_attachments))
-            archive_paths.append(image_path)
-        if scene_images:
-            attachments["scene_images"] = scene_images
-
-    # Keep archive contents deterministic and duplicate-free.
-    unique_paths = []
-    seen = set()
-    for path in archive_paths:
+    seen: set[Path] = set()
+    unique_paths: list[Path] = []
+    for path in [md_path] + extra_paths:
         resolved = path.resolve()
-        if resolved in seen or not path.exists():
-            continue
-        seen.add(resolved)
-        unique_paths.append(path)
+        if resolved not in seen and path.exists():
+            seen.add(resolved)
+            unique_paths.append(path)
 
     return attachments, unique_paths, base_dir
 
@@ -500,6 +388,8 @@ async def convert_file_archive(
 
 @app.post("/ingest")
 @app.post("/process")
+@convert_router.post("/ingest")
+@convert_router.post("/process")
 async def process_file(
     file: UploadFile = File(...),
 ):
@@ -623,6 +513,7 @@ async def process_file(
 # ---------------------------------------------------------------------------
 
 @app.get("/files")
+@convert_router.get("/files")
 async def list_files():
     conn = _get_db()
     try:
@@ -653,6 +544,7 @@ async def list_files():
 # ---------------------------------------------------------------------------
 
 @app.get("/files/{file_uuid}")
+@convert_router.get("/files/{file_uuid}")
 async def get_file(file_uuid: str):
     conn = _get_db()
     try:
@@ -697,6 +589,7 @@ async def get_file(file_uuid: str):
 # ---------------------------------------------------------------------------
 
 @app.delete("/files/{file_uuid}")
+@convert_router.delete("/files/{file_uuid}")
 async def delete_file(file_uuid: str):
     conn = _get_db()
     try:
