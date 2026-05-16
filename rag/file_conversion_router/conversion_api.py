@@ -14,11 +14,9 @@ Run with:
 """
 
 import asyncio
-import base64
 import hashlib
 import json
 import logging
-import mimetypes
 import os
 import shutil
 import sqlite3
@@ -295,7 +293,7 @@ async def convert_file(
         if suffix in GPU_EXTENSIONS:
             async with _gpu_lock:
                 md_path, converter = await asyncio.to_thread(
-                    _run_to_markdown, input_path, output_dir, "", True
+                    _run_to_markdown, input_path, output_dir
                 )
         else:
             md_path, converter = _run_to_markdown(
@@ -348,7 +346,7 @@ async def convert_file_archive(
         if suffix in GPU_EXTENSIONS:
             async with _gpu_lock:
                 md_path, converter = await asyncio.to_thread(
-                    _run_to_markdown, input_path, output_dir, "", True
+                    _run_to_markdown, input_path, output_dir
                 )
         else:
             md_path, converter = _run_to_markdown(

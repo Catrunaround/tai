@@ -9,13 +9,15 @@ import json
 from pathlib import Path
 
 import pytest
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
 
 
 @pytest.fixture(scope="module")
 def sample_pdf(tmp_path_factory) -> Path:
     """Create a minimal 2-page PDF with known headings and body text."""
+    pytest.importorskip("reportlab")
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+
     pdf_dir = tmp_path_factory.mktemp("pdf_input")
     pdf_path = pdf_dir / "test_mineru.pdf"
     c = canvas.Canvas(str(pdf_path), pagesize=letter)
@@ -38,6 +40,86 @@ def sample_pdf(tmp_path_factory) -> Path:
 
     c.save()
     return pdf_path
+
+
+def test_pdf_converter_persists_vlm_description_in_content_list(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from file_conversion_router.conversion.pdf_converter import PdfConverter
+
+    input_path = tmp_path / "lecture.pdf"
+    input_path.write_bytes(b"%PDF")
+    output_dir = tmp_path / "output"
+    description = "A flow diagram showing the parser and renderer stages."
+
+    def fake_convert_pdf_to_md(input_pdf_path, output_folder):
+        output_folder.mkdir(parents=True, exist_ok=True)
+        md_path = output_folder / f"{input_pdf_path.name}.md"
+        md_path.write_text(
+            "# Introduction\n\n![](images/figure.png)\n",
+            encoding="utf-8",
+        )
+
+        images_dir = output_folder / f"{input_pdf_path.name}_images"
+        images_dir.mkdir()
+        (images_dir / "figure.png").write_bytes(b"fake image bytes")
+
+        content_list_path = output_folder / f"{input_pdf_path.name}_content_list.json"
+        content_list_path.write_text(
+            json.dumps(
+                [
+                    {
+                        "type": "text",
+                        "text": "# Introduction",
+                        "text_level": 1,
+                        "page_idx": 0,
+                    },
+                    {
+                        "type": "image",
+                        "img_path": "images/figure.png",
+                        "page_idx": 0,
+                        "bbox": [10, 20, 30, 40],
+                    },
+                ]
+            ),
+            encoding="utf-8",
+        )
+        return md_path
+
+    fake_mineru_api = types.ModuleType(
+        "file_conversion_router.services.tai_MinerU_service.api"
+    )
+    fake_mineru_api.convert_pdf_to_md_by_MinerU = fake_convert_pdf_to_md
+    monkeypatch.setitem(
+        sys.modules,
+        "file_conversion_router.services.tai_MinerU_service.api",
+        fake_mineru_api,
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    converter = PdfConverter(course_name="Test Course", course_code="TEST101")
+    calls = []
+
+    def fake_describe_image(image_path):
+        calls.append(image_path.name)
+        return description
+
+    monkeypatch.setattr(converter, "describe_image_with_vlm", fake_describe_image)
+
+    md_path = converter._to_markdown(
+        input_path=input_path,
+        output_path=output_dir / f"{input_path.name}.md",
+        conversion_method="MinerU",
+    )
+
+    assert f"**[Image]** {description}" in md_path.read_text(encoding="utf-8")
+
+    content_list_path = md_path.with_name(f"{md_path.stem}_content_list.json")
+    content_list = json.loads(content_list_path.read_text(encoding="utf-8"))
+    image_item = next(item for item in content_list if item["type"] == "image")
+    assert image_item["description"] == description
+    assert calls == ["figure.png"]
 
 
 # ---------------------------------------------------------------------------
