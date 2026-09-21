@@ -32,6 +32,37 @@ Ensure Python version 3.10+ is installed.
 
 ### Configuration
 
+#### One-command PDF and video cloud service
+
+After SSH login to `128.32.43.46`, run this from the repository root:
+
+```bash
+bash rag/file_conversion_router/start_cloud_service.sh
+```
+
+The launcher starts the existing conversion API for both PDF (MinerU) and video
+(WhisperX). It listens on `0.0.0.0:8010`; the fixed public endpoint is
+`http://128.32.43.46:8010/convert`. One worker preserves the shared GPU queue.
+The command runs in the foreground; use Ctrl+C to stop it, or run it inside
+`tmux` to keep it running after disconnecting SSH.
+
+Use the server's configured RAG Poetry environment with MinerU, WhisperX,
+`python-multipart`, FFmpeg, a CUDA GPU, and the required model access/cache.
+The launcher loads `rag/.env` when present and adds the environment's bundled
+NVIDIA library directories to `LD_LIBRARY_PATH`, preserving existing entries.
+It can also be invoked by absolute path from another working directory.
+
+```bash
+# Health check
+curl --fail http://128.32.43.46:8010/health
+
+# Both file types use the same multipart upload field and endpoint.
+curl --fail -F 'file=@lecture.pdf' http://128.32.43.46:8010/convert
+curl --fail -F 'file=@lecture.mp4' http://128.32.43.46:8010/convert
+```
+
+Interactive API documentation: `http://128.32.43.46:8010/docs`.
+
 #### Basic Configuration (YAML)
 Create a configuration file for your course:
 
