@@ -127,6 +127,10 @@ VLLM_WHISPER_MODEL=openai/whisper-large-v3
 **Running on separate machines:** Replace `localhost` with the GPU server's IP address.
 See [4090modelservice.md](docs/vllm-setup.md) for instructions on starting vLLM servers.
 
+For an independent CosyVoice TTS service on `http://128.32.43.46:8011/tts`, run
+`python ai_chatbot_backend/start_tts_service.py` from the repository root in the
+configured CosyVoice environment. See [TTS service setup and examples](docs/tts-service.md).
+
 ## 🛠️ Development Commands
 
 ```bash
